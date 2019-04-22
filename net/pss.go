@@ -1,21 +1,22 @@
 package net
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/vocdoni/go-dvote/net/swarm"
+	"github.com/vocdoni/go-dvote/swarm"
 	"github.com/vocdoni/go-dvote/types"
 )
 
 type PSSHandle struct {
 	c *types.Connection
-	s *swarm.SimplePss
+	s *swarm.SimpleSwarm
 }
 
 func (p *PSSHandle) Init(c *types.Connection) error {
 	p.c = c
-	sn := new(swarm.SimplePss)
-	err := sn.Init()
+	sn := new(swarm.SimpleSwarm)
+	err := sn.InitPSS()
 	if err != nil {
 		return err
 	}
@@ -25,20 +26,27 @@ func (p *PSSHandle) Init(c *types.Connection) error {
 	}
 	sn.PssSub(p.c.Encryption, p.c.Key, p.c.Topic, p.c.Address)
 	p.s = sn
+	fmt.Println("pss init")
+	fmt.Println("%v", p)
 	return nil
 }
 
-func (p *PSSHandle) Listen(reciever chan<- types.Message, errors chan<- error) {
-	var pssMessage swarm.PssMsg
+func (p *PSSHandle) Listen(reciever chan<- types.Message, errorReciever chan<- error) {
+	fmt.Println("%v", p)
 	var msg types.Message
 	for {
-		pssMessage = <-p.s.PssTopics[p.c.Topic].Delivery
-		msg.Topic = p.c.Topic
-		msg.Data = pssMessage.Msg
-		msg.Address = pssMessage.Peer.String()
-		msg.TimeStamp = time.Now()
+		select {
+		case pssMessage := <-p.s.PssTopics[p.c.Topic].Delivery:
+			msg.Topic = p.c.Topic
+			msg.Data = pssMessage.Msg
+			msg.Address = pssMessage.Peer.String()
+			msg.TimeStamp = time.Now()
+			//add error check
+			reciever <- msg
+		default:
+			continue
+		}
 
-		reciever <- msg
 	}
 }
 
