@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	signature "github.com/vocdoni/go-dvote/crypto/signature_ecdsa"
 	"github.com/vocdoni/go-dvote/data"
 	"github.com/vocdoni/go-dvote/types"
 
@@ -27,7 +28,7 @@ var failBodyFmt = `{
 var successBodyFmt = `{
   "id": "%s",
   "response": %s,
-  "signature": "%x"
+  "signature": "0x%s"
 }`
 
 //content file must be b64 encoded
@@ -59,9 +60,12 @@ func failBody(requestId string, failString string) []byte {
 	return []byte(fmt.Sprintf(failBodyFmt, requestId, failString))
 }
 
-func successBody(requestId string, response string) []byte {
-	//need to calculate signature over response!
-	sig := []byte{0}
+func successBody(requestId string, response string, signer signature.SignKeys) []byte {
+	sig, err := signer.Sign(response)
+	if err != nil {
+		sig = "0x00"
+		log.Printf("Error signing response body: %s", err)
+	}
 	return []byte(fmt.Sprintf(successBodyFmt, requestId, response, sig))
 }
 
@@ -104,7 +108,7 @@ func parseTransportFromUri(uris []string) []string {
 	return out
 }
 
-func Route(inbound <-chan types.Message, storage data.Storage, wsTransport Transport) {
+func Route(inbound <-chan types.Message, storage data.Storage, wsTransport Transport, signer signature.SignKeys) {
 	for {
 		select {
 		case msg := <-inbound:
@@ -119,10 +123,17 @@ func Route(inbound <-chan types.Message, storage data.Storage, wsTransport Trans
 				log.Printf("No ID field in message or malformed")
 			}
 
+			signature, ok := msgMap["signature"].(string)
+			if !ok {
+				log.Printf("No signature in request: %s", msg)
+			}
 			requestMap, ok := msgMap["request"].(map[string]interface{})
 			if !ok {
 				log.Printf("No request field in message or malformed")
 			}
+
+			rawRequest, err := json.Marshal(requestMap)
+
 			method, ok := requestMap["method"].(string)
 			if !ok {
 				log.Printf("No method field in request or malformed")
@@ -174,92 +185,128 @@ func Route(inbound <-chan types.Message, storage data.Storage, wsTransport Trans
 					wsTransport.Send(buildReply(msg, failBody(requestId, failString)))
 				}
 				b64content := base64.StdEncoding.EncodeToString(content)
-				wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(fetchResponseFmt, b64content, requestId, time.Now().UnixNano()))))
-
+				wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(fetchResponseFmt, b64content, requestId, time.Now().UnixNano()), signer)))
 			case "addFile":
-				content, ok := requestMap["content"].(string)
-				if !ok {
-					log.Printf("No content field in addFile request or malformed")
-					//err to errchan, reply
-					break
-				}
-				b64content, err := base64.StdEncoding.DecodeString(content)
+				authorized, err := signer.VerifySender(string(rawRequest), signature)
 				if err != nil {
-					log.Printf("Couldn't decode content")
-					//err to errchan, reply
+					log.Printf("Error checking authorization: %s", err)
 					break
 				}
-				/*
-					name, ok := requestMap["name"].(string)
+				if authorized {
+					content, ok := requestMap["content"].(string)
 					if !ok {
-						log.Printf("No name field in addFile request or malformed")
+						log.Printf("No content field in addFile request or malformed")
 						//err to errchan, reply
 						break
 					}
-						timestamp, errAtoi := strconv.ParseInt(requestMap["timestamp"].(), 10, 64)
-						if errAtoi != nil {
-							log.Printf("timestamp wrong format")
+					b64content, err := base64.StdEncoding.DecodeString(content)
+					if err != nil {
+						log.Printf("Couldn't decode content")
+						//err to errchan, reply
+						break
+					}
+					/*
+						name, ok := requestMap["name"].(string)
+						if !ok {
+							log.Printf("No name field in addFile request or malformed")
 							//err to errchan, reply
 							break
 						}
-				*/
-				reqType, ok := requestMap["type"].(string)
-				if !ok {
-					log.Printf("No type field in addFile request or malformed")
-					//err to errchan, reply
-					break
-				}
-				switch reqType {
-				case "swarm":
-					// TODO: Only need IPFS for now
-					//err to errchan, reply
-					break
-				case "ipfs":
-					cid, err := storage.Publish(b64content)
-					if err != nil {
-						log.Printf("cannot add file")
+							timestamp, errAtoi := strconv.ParseInt(requestMap["timestamp"].(), 10, 64)
+							if errAtoi != nil {
+								log.Printf("timestamp wrong format")
+								//err to errchan, reply
+								break
+							}
+					*/
+					reqType, ok := requestMap["type"].(string)
+					if !ok {
+						log.Printf("No type field in addFile request or malformed")
+						//err to errchan, reply
+						break
 					}
-					//log.Printf("added %s with name %s and with timestamp %s", cid, name, timestamp)
-					ipfsRouteBaseURL := "ipfs://"
-					wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(addResponseFmt, requestId, time.Now().UnixNano(), ipfsRouteBaseURL+cid))))
+					switch reqType {
+					case "swarm":
+						// TODO: Only need IPFS for now
+						//err to errchan, reply
+						break
+					case "ipfs":
+						cid, err := storage.Publish(b64content)
+						if err != nil {
+							log.Printf("cannot add file")
+						}
+						//log.Printf("added %s with name %s and with timestamp %s", cid, name, timestamp)
+						ipfsRouteBaseURL := "ipfs://"
+						wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(addResponseFmt, requestId, time.Now().UnixNano(), ipfsRouteBaseURL+cid), signer)))
+					}
+				} else {
+					wsTransport.Send(buildReply(msg, failBody(requestId, "Unauthorized")))
+					break
 				}
-				//data.Publish
 			case "pinList":
-				pins, err := storage.ListPins()
+				authorized, err := signer.VerifySender(string(rawRequest), signature)
 				if err != nil {
-					log.Printf("Internal error fetching pins")
+					log.Printf("Error checking authorization: %s", err)
+					break
 				}
-				pinsJsonArray, err := json.Marshal(pins)
-				if err != nil {
-					log.Printf("Internal error parsing pins")
+				if authorized {
+					pins, err := storage.ListPins()
+					if err != nil {
+						log.Printf("Internal error fetching pins")
+					}
+					pinsJsonArray, err := json.Marshal(pins)
+					if err != nil {
+						log.Printf("Internal error parsing pins")
+					}
+					wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(listPinsResponseFmt, pinsJsonArray, requestId, time.Now().UnixNano()), signer)))
+				} else {
+					wsTransport.Send(buildReply(msg, failBody(requestId, "Unauthorized")))
+					break
 				}
-				wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(listPinsResponseFmt, pinsJsonArray, requestId, time.Now().UnixNano()))))
-
-				//data.Pins
 			case "pinFile":
-				uri, ok := requestMap["uri"].(string)
-				if !ok {
-					log.Printf("No uri in pinFile request or malformed")
-				}
-				err := storage.Pin(uri)
+				authorized, err := signer.VerifySender(string(rawRequest), signature)
 				if err != nil {
-					failString := fmt.Sprintf("Error pinning file %s", requestMap["uri"])
-					log.Printf(failString)
-					wsTransport.Send(buildReply(msg, failBody(requestId, failString)))
+					log.Printf("Error checking authorization: %s", err)
+					break
 				}
-				wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(boolResponseFmt, "true", requestId, time.Now().UnixNano()))))
+				if authorized {
+					uri, ok := requestMap["uri"].(string)
+					if !ok {
+						log.Printf("No uri in pinFile request or malformed")
+					}
+					err := storage.Pin(uri)
+					if err != nil {
+						failString := fmt.Sprintf("Error pinning file %s", requestMap["uri"])
+						log.Printf(failString)
+						wsTransport.Send(buildReply(msg, failBody(requestId, failString)))
+					}
+					wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(boolResponseFmt, "true", requestId, time.Now().UnixNano()), signer)))
+				} else {
+					wsTransport.Send(buildReply(msg, failBody(requestId, "Unauthorized")))
+					break
+				}
 			case "unpinFile":
-				uri, ok := requestMap["uri"].(string)
-				if !ok {
-					log.Printf("No uri in unpinFile request or malformed")
-				}
-				err := storage.Pin(uri)
+				authorized, err := signer.VerifySender(string(rawRequest), signature)
 				if err != nil {
-					failString := fmt.Sprintf("Error unpinning file %s", requestMap["uri"])
-					log.Printf(failString)
-					wsTransport.Send(buildReply(msg, failBody(requestId, failString)))
+					log.Printf("Error checking authorization: %s", err)
+					break
 				}
-				wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(boolResponseFmt, "true", requestId, time.Now().UnixNano()))))
+				if authorized {
+					uri, ok := requestMap["uri"].(string)
+					if !ok {
+						log.Printf("No uri in unpinFile request or malformed")
+					}
+					err := storage.Pin(uri)
+					if err != nil {
+						failString := fmt.Sprintf("Error unpinning file %s", requestMap["uri"])
+						log.Printf(failString)
+						wsTransport.Send(buildReply(msg, failBody(requestId, failString)))
+					}
+					wsTransport.Send(buildReply(msg, successBody(requestId, fmt.Sprintf(boolResponseFmt, "true", requestId, time.Now().UnixNano()), signer)))
+				} else {
+					wsTransport.Send(buildReply(msg, failBody(requestId, "Unauthorized")))
+					break
+				}
 			}
 		}
 	}

@@ -4,13 +4,18 @@ import (
 	"crypto/ecdsa"
 	hex "encoding/hex"
 	"errors"
+	"fmt"
 
+	"github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	crypto "github.com/ethereum/go-ethereum/crypto"
 )
 
 type SignKeys struct {
-	Public  *ecdsa.PublicKey
-	Private *ecdsa.PrivateKey
+	Public     *ecdsa.PublicKey
+	Private    *ecdsa.PrivateKey
+	Authorized []common.Address
 }
 
 // generate new keys
@@ -33,6 +38,26 @@ func (k *SignKeys) AddHexKey(privHex string) error {
 		k.Public = &k.Private.PublicKey
 	}
 	return err
+}
+
+func (k *SignKeys) AddKeyFromEncryptedJSON(keyJson []byte, passphrase string) error {
+	key, err := keystore.DecryptKey(keyJson, passphrase)
+	if err != nil {
+		return err
+	}
+	k.Private = key.PrivateKey
+	k.Public = &key.PrivateKey.PublicKey
+	return nil
+}
+
+func (k *SignKeys) AddAuthKey(address string) error {
+	if common.IsHexAddress(address) {
+		addr := common.HexToAddress(address)
+		k.Authorized = append(k.Authorized, addr)
+		return nil
+	} else {
+		return errors.New("Invalid address hex")
+	}
 }
 
 // returns the public and private keys as hex strings
@@ -66,4 +91,30 @@ func (k *SignKeys) Verify(message, signHex, pubHex string) (bool, error) {
 	hash := crypto.Keccak256([]byte(message))
 	result := crypto.VerifySignature(pub, hash, signature[:64])
 	return result, nil
+}
+
+func signHash(data []byte) []byte {
+	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data)
+	return crypto.Keccak256([]byte(msg))
+}
+
+func (k *SignKeys) VerifySender(msg, sigHex string) (bool, error) {
+	sig := hexutil.MustDecode(sigHex)
+	if sig[64] != 27 && sig[64] != 28 {
+		return false, errors.New("Bad recovery hex")
+	}
+	sig[64] -= 27
+
+	pubKey, err := crypto.SigToPub(signHash([]byte(msg)), sig)
+	if err != nil {
+		return false, errors.New("Bad sig")
+	}
+
+	recoveredAddr := crypto.PubkeyToAddress(*pubKey)
+	for _, addr := range k.Authorized {
+		if addr == recoveredAddr {
+			return true, nil
+		}
+	}
+	return false, nil
 }

@@ -2,8 +2,10 @@ package main
 
 import (
 	flag "github.com/spf13/pflag"
+	sig "github.com/vocdoni/go-dvote/crypto/signature_ecdsa"
 
 	"log"
+	"strings"
 	"time"
 
 	"github.com/vocdoni/go-dvote/chain"
@@ -27,6 +29,10 @@ func main() {
 	dvotePort := flag.Int("dvotePort", 9090, "dvote API port")
 	dvoteRoute := flag.String("dvoteRoute", "/dvote", "dvote API route")
 
+	allowPrivate := flag.Bool("allowPrivate", true, "allows authorized clients to call private methods")
+	allowedAddrs := flag.String("allowedAddrs", "", "comma delimited list of allowed client eth addresses")
+	signingKey := flag.String("signingKey", "", "request signing key for this node")
+
 	chainType := flag.String("chain", "vctestnet", "Blockchain to connect")
 	w3wsPort := flag.Int("w3wsPort", 0, "websockets port")
 	w3wsHost := flag.String("w3wsHost", "0.0.0.0", "ws host to listen on")
@@ -37,6 +43,62 @@ func main() {
 	ipfsNoInit := flag.Bool("ipfsNoInit", false, "do not start ipfs daemon (if already started)")
 
 	flag.Parse()
+
+	var node *chain.EthChainContext
+	_ = node
+	if *w3Enabled {
+		w3cfg, err := chain.NewConfig(*chainType)
+		if err != nil {
+			log.Fatal(err)
+		}
+		w3cfg.WSPort = *w3wsPort
+		w3cfg.WSHost = *w3wsHost
+		w3cfg.HTTPPort = *w3httpPort
+		w3cfg.HTTPHost = *w3httpHost
+
+		node, err = chain.Init(w3cfg)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		node.Start()
+	}
+
+	var signer *sig.SignKeys
+	signer = new(sig.SignKeys)
+	if *allowPrivate && *allowedAddrs != "" {
+		keys := strings.Split(*allowedAddrs, ",")
+		for _, key := range keys {
+			err := signer.AddAuthKey(key)
+			if err != nil {
+				log.Printf("Error adding allowed key: %s", err)
+			}
+		}
+	}
+
+	if *signingKey != "" {
+		err := signer.AddHexKey(*signingKey)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else if *w3Enabled {
+		acc := node.Keys.Accounts()
+		if len(acc) > 0 {
+			keyJson, err := node.Keys.Export(acc[0], "", "")
+			if err != nil {
+				log.Fatal(err)
+			}
+			err = signer.AddKeyFromEncryptedJSON(keyJson, "")
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	} else {
+		err := signer.Generate()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	var websockets *net.Transport
 	_ = websockets
@@ -65,27 +127,7 @@ func main() {
 		}
 
 		go websockets.Listen(listenerOutput)
-		go net.Route(listenerOutput, storage, websockets)
-	}
-
-	var node *chain.EthChainContext
-	_ = node
-	if *w3Enabled {
-		w3cfg, err := chain.NewConfig(*chainType)
-		if err != nil {
-			log.Fatal(err)
-		}
-		w3cfg.WSPort = *w3wsPort
-		w3cfg.WSHost = *w3wsHost
-		w3cfg.HTTPPort = *w3httpPort
-		w3cfg.HTTPHost = *w3httpHost
-
-		node, err := chain.Init(w3cfg)
-		if err != nil {
-			log.Panic(err)
-		}
-
-		node.Start()
+		go net.Route(listenerOutput, storage, websockets, *signer)
 	}
 
 	for {
