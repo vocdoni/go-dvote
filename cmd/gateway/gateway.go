@@ -12,6 +12,7 @@ import (
 	"github.com/vocdoni/go-dvote/data"
 	"github.com/vocdoni/go-dvote/net"
 	"github.com/vocdoni/go-dvote/types"
+	"github.com/vocdoni/go-dvote/router"
 )
 
 /*
@@ -127,7 +128,8 @@ func main() {
 		}
 
 		go websockets.Listen(listenerOutput)
-		go net.Route(listenerOutput, storage, websockets, *signer)
+		router := router.InitRouter(listenerOutput, storage, websockets, *signer, *dvoteEnabled)
+		go router.Route()
 	}
 
 	for {
