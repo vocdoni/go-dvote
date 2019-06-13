@@ -14,23 +14,20 @@ import (
 	"github.com/gobwas/ws/wsutil"
 )
 
+// WebsocketHandle represents the information required to work with ws in go-dvote
 type WebsocketHandle struct {
-	c *types.Connection
-	e *epoll.Epoll
+	c *types.Connection // the ws connection
+	e *epoll.Epoll      // epoll for the ws implementation
+	p *Proxy            // proxy where the ws will be associated
 }
 
-func (w *WebsocketHandle) upgrader(writer http.ResponseWriter, reader *http.Request) {
-	// Upgrade connection
-	conn, _, _, err := ws.UpgradeHTTP(reader, writer)
-	if err != nil {
-		return
-	}
-	if err := w.e.Add(conn); err != nil {
-		log.Printf("Failed to add connection %v", err)
-		conn.Close()
-	}
+// SetProxy sets the proxy for the ws
+func (w *WebsocketHandle) SetProxy(p *Proxy) {
+	w.p = p
 }
 
+// Init increases the sys limitations regarding to the number of files opened
+// to handle the connections and creates the epoll
 func (w *WebsocketHandle) Init(c *types.Connection) error {
 	// Increase resources limitations
 	var rLimit syscall.Rlimit
@@ -49,15 +46,41 @@ func (w *WebsocketHandle) Init(c *types.Connection) error {
 		return err
 	}
 
-	http.HandleFunc(c.Path, w.upgrader)
-	go func() {
-		log.Fatal(http.ListenAndServe(c.Address+":"+strconv.Itoa(c.Port), nil))
-	}()
-	log.Printf("Dvote websocket endpoint initialized on %s", "ws://"+c.Address+":"+strconv.Itoa(c.Port))
-
 	return nil
 }
 
+// AddProxyHandler adds a handler on the proxy and upgrades the connection
+// a ws connection is activated with a normal http request with Connection: upgrade
+func (w *WebsocketHandle) AddProxyHandler(path string) {
+	upgradeConn := func(writer http.ResponseWriter, reader *http.Request) {
+		// Upgrade connection
+		conn, _, _, err := ws.UpgradeHTTP(reader, writer)
+		if err != nil {
+			return
+		}
+		if w.p.SSLDomain == "" {
+			if err := w.e.Add(conn, false); err != nil {
+				log.Printf("Failed to add connection %v", err)
+				conn.Close()
+			}
+		} else {
+			if err := w.e.Add(conn, true); err != nil {
+				log.Printf("Failed to add connection %v", err)
+				conn.Close()
+			}
+		}
+	}
+	w.p.AddHandler(path, upgradeConn)
+
+	if w.p.SSLDomain == "" {
+		log.Printf("ws initialized on ws://" + w.p.Address + ":" + strconv.Itoa(w.p.Port) + path)
+	} else {
+		log.Printf("wss initialized on wss://" + w.p.SSLDomain + ":" + strconv.Itoa(w.p.Port) + path)
+	}
+
+}
+
+// Listen listens for incoming data
 func (w *WebsocketHandle) Listen(reciever chan<- types.Message) {
 	var msg types.Message
 	for {
@@ -71,9 +94,16 @@ func (w *WebsocketHandle) Listen(reciever chan<- types.Message) {
 				break
 			}
 			if payload, _, err := wsutil.ReadClientData(conn); err != nil {
-				if err := w.e.Remove(conn); err != nil {
-					log.Printf("WS recieve rror: %s", err)
+				if w.p.SSLDomain == "" {
+					if err := w.e.Remove(conn, false); err != nil {
+						log.Printf("WS recieve error: %s", err)
+					}
+				} else {
+					if err := w.e.Remove(conn, true); err != nil {
+						log.Printf("WS recieve error: %s", err)
+					}
 				}
+
 				conn.Close()
 			} else {
 				msg.Data = []byte(payload)
@@ -87,6 +117,7 @@ func (w *WebsocketHandle) Listen(reciever chan<- types.Message) {
 	}
 }
 
+// Send sends the response given a message
 func (w *WebsocketHandle) Send(msg types.Message) {
 	wsutil.WriteServerMessage(*msg.Context.(*types.WebsocketContext).Conn, ws.OpBinary, msg.Data)
 }

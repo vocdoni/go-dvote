@@ -43,6 +43,9 @@ func main() {
 	ipfsDaemon := flag.String("ipfsDaemon", "ipfs", "ipfs daemon path")
 	ipfsNoInit := flag.Bool("ipfsNoInit", false, "do not start ipfs daemon (if already started)")
 
+	sslDomain := flag.String("sslDomain", "", "ssl secure domain")
+	sslDirCert := flag.String("sslDirCert", "./", "path where the ssl files will be stored")
+
 	flag.Parse()
 
 	var node *chain.EthChainContext
@@ -101,39 +104,36 @@ func main() {
 		}
 	}
 
-	var websockets *net.Transport
-	_ = websockets
-	var storage *data.Storage
-	_ = storage
-
 	listenerOutput := make(chan types.Message)
 
 	if *dvoteEnabled {
-		wsCfg := new(types.Connection)
-		wsCfg.Address = *dvoteHost
-		wsCfg.Port = *dvotePort
-		wsCfg.Path = *dvoteRoute
+		p := net.NewProxy()
+		p.SSLDomain = *sslDomain
+		p.SSLCertDir = *sslDirCert
+		p.Address = *dvoteHost
+		p.Port = *dvotePort
+		p.Init()
 
-		websockets, err := net.Init(net.TransportIDFromString("Websocket"), wsCfg)
-		if err != nil {
-			log.Fatal(err)
-		}
+		ws := new(net.WebsocketHandle)
+		ws.Init(new(types.Connection))
+		ws.SetProxy(p)
+		ws.AddProxyHandler(*dvoteRoute)
 
 		ipfsConfig := data.IPFSNewConfig()
 		ipfsConfig.Start = !*ipfsNoInit
 		ipfsConfig.Binary = *ipfsDaemon
-		storage, err := data.InitDefault(data.StorageIDFromString("IPFS"), ipfsConfig)
+    storage, err := data.InitDefault(data.StorageIDFromString("IPFS"), ipfsConfig)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		go websockets.Listen(listenerOutput)
-		router := router.InitRouter(listenerOutput, storage, websockets, *signer, *dvoteEnabled)
+		go ws.Listen(listenerOutput)
+		router := router.InitRouter(listenerOutput, storage, ws, *signer, *dvoteEnabled)
 		go router.Route()
+    
 	}
 
 	for {
 		time.Sleep(1 * time.Second)
 	}
-
 }
