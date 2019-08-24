@@ -7,11 +7,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"gitlab.com/vocdoni/go-dvote/types"
 
 	signature "gitlab.com/vocdoni/go-dvote/crypto/signature"
+	"gitlab.com/vocdoni/go-dvote/data"
 	"gitlab.com/vocdoni/go-dvote/log"
 	tree "gitlab.com/vocdoni/go-dvote/tree"
 )
@@ -31,6 +33,7 @@ type CensusManager struct {
 	AuthWindow int32                 //Time window (seconds) in which TimeStamp will be accepted if auth enabled
 	Census     CensusNamespaces      //Available namespaces
 	Trees      map[string]*tree.Tree //MkTrees map of merkle trees indexed by censusId
+	Data       *data.Storage
 }
 
 // Init creates a new census manager
@@ -223,7 +226,7 @@ func (cm *CensusManager) HTTPhandler(w http.ResponseWriter, req *http.Request, s
 		log.Warnf("authorization error: %s", err.Error())
 		auth = false
 	}
-	resp := cm.Handler(&rm.Request, auth)
+	resp := cm.Handler(&rm.Request, auth, "")
 	respMsg := new(types.CensusResponseMessage)
 	respMsg.Response = *resp
 	respMsg.ID = rm.ID
@@ -235,27 +238,30 @@ func (cm *CensusManager) HTTPhandler(w http.ResponseWriter, req *http.Request, s
 	httpReply(respMsg, w)
 }
 
-// Handler handles an API census manager request
-func (cm *CensusManager) Handler(r *types.CensusRequest, isAuth bool) *types.CensusResponse {
+// Handler handles an API census manager request.
+// isAuth gives access to the private methods only if censusPrefix match or censusPrefix not defined
+// censusPrefix should usually be the Ethereum Address or a Hash of the allowed PubKey
+func (cm *CensusManager) Handler(r *types.CensusRequest, isAuth bool, censusPrefix string) *types.CensusResponse {
 	resp := new(types.CensusResponse)
 	op := r.Method
 	var err error
 
 	// Process data
-	log.Infof("processing data => %+v", *r)
+	log.Infof("processing data %+v", *r)
 	resp.Ok = true
 	resp.Error = ""
 	resp.TimeStamp = int32(time.Now().Unix())
 
 	if op == "addCensus" {
 		if isAuth {
-			err = cm.AddNamespace(r.CensusID, r.PubKeys)
+			err = cm.AddNamespace(censusPrefix+r.CensusID, r.PubKeys)
 			if err != nil {
 				log.Warnf("error creating census: %s", err.Error())
 				resp.Ok = false
 				resp.Error = err.Error()
 			} else {
-				log.Infof("census %s created successfully managed by %s", r.CensusID, r.PubKeys)
+				log.Infof("census %s%s created successfully managed by %s", censusPrefix, r.CensusID, r.PubKeys)
+				resp.CensusID = censusPrefix + r.CensusID
 			}
 		} else {
 			resp.Ok = false
@@ -277,6 +283,16 @@ func (cm *CensusManager) Handler(r *types.CensusRequest, isAuth bool) *types.Cen
 		return resp
 	}
 
+	// validAuthPrefix is true: either censusPrefix is not used or censusID contains the prefix
+	validAuthPrefix := false
+	if len(censusPrefix) == 0 {
+		validAuthPrefix = true
+		log.Debugf("prefix not specified, allowing access to all census IDs if pubkey validation correct")
+	} else {
+		validAuthPrefix = strings.HasPrefix(r.CensusID, censusPrefix)
+		log.Debugf("prefix allowed for %s", r.CensusID)
+	}
+
 	//Methods without rootHash
 	if op == "getRoot" {
 		resp.Root = cm.Trees[r.CensusID].GetRoot()
@@ -284,7 +300,7 @@ func (cm *CensusManager) Handler(r *types.CensusRequest, isAuth bool) *types.Cen
 	}
 
 	if op == "addClaimBulk" {
-		if isAuth {
+		if isAuth && validAuthPrefix {
 			addedClaims := 0
 			for _, c := range r.ClaimsData {
 				err := cm.Trees[r.CensusID].AddClaim([]byte(c))
@@ -304,7 +320,7 @@ func (cm *CensusManager) Handler(r *types.CensusRequest, isAuth bool) *types.Cen
 	}
 
 	if op == "addClaim" {
-		if isAuth {
+		if isAuth && validAuthPrefix {
 			err = cm.Trees[r.CensusID].AddClaim([]byte(r.ClaimData))
 			if err != nil {
 				log.Warnf("error adding claim: %s", err.Error())
@@ -321,7 +337,7 @@ func (cm *CensusManager) Handler(r *types.CensusRequest, isAuth bool) *types.Cen
 	}
 
 	if op == "importDump" {
-		if isAuth {
+		if isAuth && validAuthPrefix {
 			if len(r.ClaimsData) > 0 {
 				err = cm.Trees[r.CensusID].ImportDump(r.ClaimsData)
 				if err != nil {
@@ -335,6 +351,60 @@ func (cm *CensusManager) Handler(r *types.CensusRequest, isAuth bool) *types.Cen
 		} else {
 			resp.Ok = false
 			resp.Error = "invalid authentication"
+		}
+		return resp
+	}
+
+	if op == "importRemote" {
+		// To-Do implement Gzip compression
+		if !isAuth || !validAuthPrefix {
+			resp.Ok = false
+			resp.Error = "invalid authentication"
+			return resp
+		}
+		if cm.Data == nil {
+			resp.Ok = false
+			resp.Error = "not supported"
+			return resp
+		}
+		dataStorage := *cm.Data
+		if !strings.HasPrefix(r.URI, dataStorage.GetURIprefix()) ||
+			len(r.URI) <= len(dataStorage.GetURIprefix()) {
+			log.Warnf("uri not supported %s (supported prefix %s)", r.URI, dataStorage.GetURIprefix())
+			resp.Ok = false
+			resp.Error = "URI not supported"
+			return resp
+		}
+		log.Infof("retrieving remote census %s", r.CensusURI)
+		censusRaw, err := dataStorage.Retrieve(r.URI[len(dataStorage.GetURIprefix()):])
+		if err != nil {
+			log.Warnf("cannot retrieve census: %s", err.Error())
+			resp.Ok = false
+			resp.Error = "cannot retrieve census"
+			return resp
+		}
+		var dump types.CensusDump
+		err = json.Unmarshal(censusRaw, &dump)
+		if err != nil {
+			log.Warnf("retrieved census do not have a correct format: %s", err.Error())
+			resp.Ok = false
+			resp.Error = "retrieved census do not have a correct format"
+			return resp
+		}
+		log.Infof("retrieved census with rootHash %s and size %d bytes", dump.RootHash, len(censusRaw))
+		if len(dump.ClaimsData) > 0 {
+			err = cm.Trees[r.CensusID].ImportDump(dump.ClaimsData)
+			if err != nil {
+				log.Warnf("error importing dump: %s", err.Error())
+				resp.Ok = false
+				resp.Error = "error importing census"
+			} else {
+				log.Infof("dump imported successfully, %d claims", len(dump.ClaimsData))
+			}
+		} else {
+			log.Warnf("no claims found on the retreived census")
+			resp.Ok = false
+			resp.Error = "no claims found"
 		}
 		return resp
 	}
@@ -362,13 +432,8 @@ func (cm *CensusManager) Handler(r *types.CensusRequest, isAuth bool) *types.Cen
 		return resp
 	}
 
-	if op == "getIdx" {
-		resp.Idx, err = t.GetIndex([]byte(r.ClaimData))
-		return resp
-	}
-
 	if op == "dump" || op == "dumpPlain" {
-		if !isAuth {
+		if !isAuth || !validAuthPrefix {
 			resp.Ok = false
 			resp.Error = "invalid authentication"
 			return resp
@@ -388,6 +453,41 @@ func (cm *CensusManager) Handler(r *types.CensusRequest, isAuth bool) *types.Cen
 			resp.ClaimsData = dumpValues
 		}
 		return resp
+	}
+
+	if op == "publish" {
+		// To-Do implement Gzip compression
+		if !isAuth || !validAuthPrefix {
+			resp.Ok = false
+			resp.Error = "invalid authentication"
+			return resp
+		}
+		if cm.Data == nil {
+			resp.Ok = false
+			resp.Error = "not supported"
+			return resp
+		}
+		var dump types.CensusDump
+		dump.RootHash = t.GetRoot()
+		dump.ClaimsData, err = t.Dump(t.GetRoot())
+		if err != nil {
+			resp.Error = err.Error()
+			resp.Ok = false
+			log.Warnf("cannot dump census with root %s: %s", t.GetRoot(), err.Error())
+			return resp
+		}
+		dumpBytes, err := json.Marshal(dump)
+		if err != nil {
+			resp.Error = err.Error()
+			resp.Ok = false
+			log.Warnf("cannot marshal census dump: %s", err.Error())
+			return resp
+		}
+		dataStorage := *cm.Data
+		cid, err := dataStorage.Publish(dumpBytes)
+		resp.URI = dataStorage.GetURIprefix() + cid
+		log.Infof("published census at %s", resp.URI)
+		resp.Root = t.GetRoot()
 	}
 
 	if op == "checkProof" {

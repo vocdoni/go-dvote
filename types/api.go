@@ -140,15 +140,16 @@ type CensusRequestMessage struct {
 
 // CensusRequest type represents a JSON object with all possible requests fields
 type CensusRequest struct {
-	Method     string   `json:"method"`              // method to call
-	CensusID   string   `json:"censusId"`            // References to MerkleTree namespace
-	RootHash   string   `json:"rootHash"`            // References to MerkleTree rootHash
-	ClaimData  string   `json:"claimData"`           // Data to add to the MerkleTree
-	ClaimsData []string `json:"claimsData"`          // Multiple Data to add to the MerkleTree
-	ProofData  string   `json:"proofData"`           // MerkleProof to check
-	PubKeys    []string `json:"pubKeys"`             // Public key managers for creating a new census
-	TimeStamp  int32    `json:"timestamp"`           // Unix TimeStamp in seconds
-	CensusURI  string   `json:"censusUri,omitempty"` //Census Service URI for proxy messages
+	Method     string   `json:"method"`               // method to call
+	CensusID   string   `json:"censusId"`             // References to MerkleTree namespace
+	RootHash   string   `json:"rootHash,omitempty"`   // References to MerkleTree rootHash
+	ClaimData  string   `json:"claimData,omitempty"`  // Data to add to the MerkleTree
+	ClaimsData []string `json:"claimsData,omitempty"` // Multiple Data to add to the MerkleTree
+	ProofData  string   `json:"proofData,omitempty"`  // MerkleProof to check
+	PubKeys    []string `json:"pubKeys,omitempty"`    // Public key managers for creating a new census
+	TimeStamp  int32    `json:"timestamp"`            // Unix TimeStamp in seconds
+	CensusURI  string   `json:"censusUri,omitempty"`  // Census Service URI for proxy messages
+	URI        string   `json:"uri,omitempty"`        // URI of a census to import/export
 }
 
 // CensusResponseMessage represents a census manager JSON response package
@@ -162,11 +163,18 @@ type CensusResponseMessage struct {
 type CensusResponse struct {
 	Ok         bool     `json:"ok"`
 	Request    string   `json:"request"`
-	Error      string   `json:"error"`
-	Root       string   `json:"root"`
-	Siblings   string   `json:"siblings"`
-	Idx        string   `json:"idx"`
-	ValidProof bool     `json:"validProof"`
-	ClaimsData []string `json:"claimsData"`
+	Error      string   `json:"error,omitempty"`
+	Root       string   `json:"root,omitempty"`
+	CensusID   string   `json:"censusId,omitempty"`
+	URI        string   `json:"uri,omitempty"`
+	Siblings   string   `json:"siblings,omitempty"`
+	ValidProof bool     `json:"validProof,omitempty"`
+	ClaimsData []string `json:"claimsData,omitempty"`
 	TimeStamp  int32    `json:"timestamp"`
+}
+
+// CensusDump represents a Dump of the census. Used for publishing on IPFS/Swarm filesystems.
+type CensusDump struct {
+	RootHash   string   `json:"rootHash"`
+	ClaimsData []string `json:"claimsData"`
 }

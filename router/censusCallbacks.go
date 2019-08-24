@@ -3,11 +3,10 @@ package router
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"time"
-	"fmt"
 
 	"gitlab.com/vocdoni/go-dvote/log"
 	"gitlab.com/vocdoni/go-dvote/types"
@@ -20,30 +19,32 @@ func censusLocalMethod(msg types.Message, rawRequest []byte, router *Router) {
 		log.Warnf("couldn't decode into CensusRequest type from request %v", msg.Data)
 		return
 	}
-	log.Infof("request is: %v", censusRequest)
-	go censusLocal(msg, censusRequest, router)
+	authorized, addr, err := router.signer.VerifyJSONsender(censusRequest.Request, censusRequest.Signature)
+	if err != nil {
+		log.Debug(err.Error())
+	}
+	go censusLocal(msg, &censusRequest, router, authorized, addr)
 }
 
-func censusLocal(msg types.Message, crm types.CensusRequestMessage, router *Router) {
-	var err error
+func censusLocal(msg types.Message, crm *types.CensusRequestMessage, router *Router, auth bool, addr string) {
 	var response types.CensusResponseMessage
-	cresponse := router.census.Handler(&crm.Request, true)
+	var err error
+	log.Debugf("clien authorization %t. Recovered address is %s", auth, addr)
+	cresponse := router.census.Handler(&crm.Request, auth, addr+"/")
 	response.Response = *cresponse
-	//response.Request = router.census.Handler(&crm.Request, true)
 	response.ID = crm.ID
-	
-	response.Response.TimeStamp = int32(time.Now().Unix())
+	response.Response.Request = crm.ID
 	response.Signature, err = router.signer.SignJSON(response.Response)
-		if err != nil {
-			log.Warn(err.Error())
-		}
-		rawResponse, err := json.Marshal(response)
-		if err != nil {
-			sendError(router.transport, router.signer, msg, crm.ID, fmt.Sprintf("could not unmarshal response (%s)", err.Error()))
-		} else {
-			log.Infof("sending census resposne: %s", rawResponse)
-			router.transport.Send(buildReply(msg, rawResponse))
-		}
+	if err != nil {
+		log.Warn(err.Error())
+	}
+	rawResponse, err := json.Marshal(response)
+	if err != nil {
+		sendError(router.transport, router.signer, msg, crm.ID, fmt.Sprintf("could not unmarshal response (%s)", err.Error()))
+	} else {
+		log.Infof("sending census resposne: %s", rawResponse)
+		router.transport.Send(buildReply(msg, rawResponse))
+	}
 }
 
 func censusProxyMethod(msg types.Message, rawRequest []byte, router *Router) {

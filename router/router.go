@@ -27,7 +27,7 @@ func getMethod(payload []byte) (string, []byte, error) {
 	var msgStruct types.MessageRequest
 	err := json.Unmarshal(payload, &msgStruct)
 	if err != nil {
-		log.Error("Could not unmarshall JSON, error: %s", err)
+		log.Errorf("Could not unmarshall JSON, error: %s", err)
 		return "", nil, err
 	}
 	method, ok := msgStruct.Request["method"].(string)
@@ -78,6 +78,7 @@ func InitRouter(inbound <-chan types.Message, storage data.Storage, transport ne
 	signer signature.SignKeys) Router {
 	requestMap := make(methodMap)
 	cm := new(census.CensusManager)
+	log.Infof("using signer with address %s", signer.EthAddrString())
 	return Router{requestMap, inbound, storage, transport, signer, cm}
 }
 
@@ -97,10 +98,16 @@ func (r *Router) EnableFileAPI() {
 //EnableCensusAPI enables the Census API in the Router
 func (r *Router) EnableCensusAPI(cm *census.CensusManager) {
 	r.census = cm
+	cm.Data = &r.storage
 	r.registerMethod("getRoot", censusLocalMethod)
 	r.registerMethod("dump", censusLocalMethod)
 	r.registerMethod("genProof", censusLocalMethod)
 	r.registerMethod("checkProof", censusLocalMethod)
+	r.registerMethod("addCensus", censusLocalMethod)
+	r.registerMethod("addClaim", censusLocalMethod)
+	r.registerMethod("addClaimBulk", censusLocalMethod)
+	r.registerMethod("publish", censusLocalMethod)
+	r.registerMethod("importRemote", censusLocalMethod)
 }
 
 //Route routes requests through the Router object
@@ -123,9 +130,28 @@ func (r *Router) Route() {
 			if methodFunc == nil {
 				log.Warnf("router has no method named %s", method)
 			} else {
-				log.Info("calling method %s", method)
+				log.Infof("calling method %s", method)
 				methodFunc(msg, rawRequest, r)
 			}
 		}
 	}
+}
+
+func sendError(transport net.Transport, signer signature.SignKeys, msg types.Message, requestID, errMsg string) {
+	log.Warn(errMsg)
+	var err error
+	var response types.ErrorResponse
+	response.ID = requestID
+	response.Error.Request = requestID
+	response.Error.Timestamp = int32(time.Now().Unix())
+	response.Error.Message = errMsg
+	response.Signature, err = signer.SignJSON(response.Error)
+	if err != nil {
+		log.Warn(err.Error())
+	}
+	rawResponse, err := json.Marshal(response)
+	if err != nil {
+		log.Warnf("error marshaling response body: %s", err)
+	}
+	transport.Send(buildReply(msg, rawResponse))
 }
