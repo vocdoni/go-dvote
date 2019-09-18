@@ -16,8 +16,13 @@ type MetaRequest struct {
 	ClaimData  string   `json:"claimData,omitempty"`
 	ClaimsData []string `json:"claimsData,omitempty"`
 	Content    string   `json:"content,omitempty"`
+	From       int32    `json:"from,omitempty"`
+	ListSize   int32    `json:"listSize,omitempty"`
 	Method     string   `json:"method"`
 	Name       string   `json:"name,omitempty"`
+	Nullifier  string   `json:"nullifier,omitempty"`
+	Payload    string   `json:"payload,omitempty"`
+	ProcessId  string   `json:"processId,omitempty"`
 	ProofData  string   `json:"proofData,omitempty"`
 	PubKeys    []string `json:"pubKeys,omitempty"`
 	RootHash   string   `json:"rootHash,omitempty"`

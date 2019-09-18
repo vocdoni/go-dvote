@@ -6,6 +6,7 @@ require (
 	github.com/apilayer/freegeoip v3.5.0+incompatible // indirect
 	github.com/cespare/cp v1.1.1 // indirect
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
+	github.com/cosmos/cosmos-sdk v0.37.0
 	github.com/decred/dcrd/dcrec/secp256k1 v1.0.2
 	github.com/docker/docker v1.13.1 // indirect
 	github.com/ethereum/go-ethereum v1.9.3
@@ -55,10 +56,13 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/pquerna/ffjson v0.0.0-20181028064349-e517b90714f7 // indirect
 	github.com/prometheus/tsdb v0.10.0 // indirect
+	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a // indirect
 	github.com/robertkrimen/otto v0.0.0-20180617131154-15f95af6e78d // indirect
 	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v1.4.0
-	github.com/syndtr/goleveldb v1.0.0
+	github.com/syndtr/goleveldb v1.0.1-0.20190318030020-c3a204f8e965
+	github.com/tendermint/tendermint v0.32.3
+	github.com/tendermint/tm-db v0.1.1
 	github.com/tinylib/msgp v1.1.0 // indirect
 	github.com/uber-go/atomic v1.4.0 // indirect
 	github.com/uber/jaeger-client-go v2.17.0+incompatible // indirect

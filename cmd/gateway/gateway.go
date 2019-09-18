@@ -5,15 +5,21 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"syscall"
 
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
+
+	//abcicli "github.com/tendermint/tendermint/abci/client"
+	dbm "github.com/tendermint/tm-db"
+
 	sig "gitlab.com/vocdoni/go-dvote/crypto/signature"
 
 	"encoding/hex"
 	goneturl "net/url"
 	"os"
+	"os/signal"
 	"os/user"
 	"strings"
 	"time"
@@ -26,6 +32,8 @@ import (
 	"gitlab.com/vocdoni/go-dvote/net"
 	"gitlab.com/vocdoni/go-dvote/router"
 	"gitlab.com/vocdoni/go-dvote/types"
+	vochain "gitlab.com/vocdoni/go-dvote/vochain"
+	oracle "gitlab.com/vocdoni/go-dvote/vochain/oracle"
 )
 
 func newConfig() (config.GWCfg, error) {
@@ -37,6 +45,8 @@ func newConfig() (config.GWCfg, error) {
 	}
 	userDir := usr.HomeDir + "/.dvote"
 	path := flag.String("cfgpath", userDir+"/config.yaml", "filepath for custom gateway config")
+	dataDir := flag.String("dataDir", userDir, "directory where data is stored")
+	flag.String("logLevel", "info", "Log level (debug, info, warn, error, dpanic, panic, fatal)")
 	flag.Bool("fileApi", true, "enable file API")
 	flag.Bool("censusApi", true, "enable census API")
 	flag.Bool("voteApi", true, "enable vote API")
@@ -56,9 +66,15 @@ func newConfig() (config.GWCfg, error) {
 	flag.String("ipfsClusterKey", "", "enables ipfs cluster using a shared key")
 	flag.StringSlice("ipfsClusterPeers", []string{}, "ipfs cluster peer bootstrap addresses in multiaddr format")
 	flag.String("sslDomain", "", "enable SSL secure domain with LetsEncrypt auto-generated certificate (listenPort=443 is required)")
-	flag.String("dataDir", userDir, "directory where data is stored")
-	flag.String("logLevel", "info", "Log level (debug, info, warn, error, dpanic, panic, fatal)")
 	flag.String("clusterLogLevel", "ERROR", "Log level for ipfs cluster (debug, info, warning, error)")
+
+	flag.String("vochainListen", "0.0.0.0:26656", "p2p host and port to listent for the voting chain")
+	flag.String("vochainRPClisten", "127.0.0.1:26657", "rpc host and port to listent for the voting chain")
+	flag.String("vochainGenesis", "", "use alternative geneiss file for the voting chain")
+	flag.String("vochainLogLevel", "error", "voting chain node log level")
+	flag.StringArray("vochainPeers", []string{}, "coma separated list of p2p peers")
+	flag.StringArray("vochainSeeds", []string{}, "coma separated list of p2p seed nodes")
+	flag.String("vochainContract", "0x3eF4dE917a6315c1De87b02FD8b19EACef324c3b", "voting smart contract where the oracle will listen")
 
 	flag.Parse()
 
@@ -94,6 +110,15 @@ func newConfig() (config.GWCfg, error) {
 	viper.SetDefault("cluster.leave", true)
 	viper.SetDefault("cluster.alloc", "disk")
 	viper.SetDefault("cluster.clusterLogLevel", "ERROR")
+
+	viper.SetDefault("vochain.p2pListen", "0.0.0.0:26656")
+	viper.SetDefault("vochain.rpcListen", "0.0.0.0:26657")
+	viper.SetDefault("vochain.logLevel", "error")
+	viper.SetDefault("vochain.genesis", "")
+	viper.SetDefault("vochain.peers", []string{})
+	viper.SetDefault("vochain.seeds", []string{})
+	viper.SetDefault("vochain.dataDir", *dataDir+"/vochain")
+	viper.SetDefault("vochain.contract", "0x3eF4dE917a6315c1De87b02FD8b19EACef324c3b")
 
 	viper.SetConfigType("yaml")
 	if *path == userDir+"/config.yaml" { //if path left default, write new cfg file if empty or if file doesn't exist.
@@ -135,6 +160,15 @@ func newConfig() (config.GWCfg, error) {
 	viper.BindPFlag("cluster.secret", flag.Lookup("ipfsClusterKey"))
 	viper.BindPFlag("cluster.bootstraps", flag.Lookup("ipfsClusterPeers"))
 	viper.BindPFlag("cluster.clusterloglevel", flag.Lookup("clusterLogLevel"))
+
+	viper.BindPFlag("vochain.p2pListen", flag.Lookup("vochainListen"))
+	viper.BindPFlag("vochain.rpcListen", flag.Lookup("vochainRPClisten"))
+	viper.BindPFlag("vochain.logLevel", flag.Lookup("vochainLogLevel"))
+	viper.BindPFlag("vochain.peers", flag.Lookup("vochainPeers"))
+	viper.BindPFlag("vochain.seeds", flag.Lookup("vochainSeeds"))
+	viper.BindPFlag("vochain.genesis", flag.Lookup("vochainGenesis"))
+	viper.Set("vochain.dataDir", *dataDir+"/vochain")
+	viper.BindPFlag("vochain.contract", flag.Lookup("vochainContract"))
 
 	viper.SetConfigFile(*path)
 	err = viper.ReadInConfig()
@@ -317,6 +351,11 @@ func main() {
 		if err != nil {
 			log.Fatal(err.Error())
 		}
+		cid, err := storage.Publish([]byte(`{"version":"1.0","type":"snark-vote","startBlock":10000,"numberOfBlocks":400,"census":{"merkleRoot":"0x0000000000000000000000000000000000000000000000000","merkleTree":"ipfs://1234123412341234"},"details":{"entityId":"0x180dd5765d9f7ecef810b565a2e5bd14a3ccd536c442b3de74867df552855e85","encryptionPublicKey":"12345678","title":{"default":"Universal Basic Income"},"description":{"default":"## Markdown text goes here\n### Abstract"},"headerImage":"<content uri>","questions":[{"type":"single-choice","question":{"default":"Should universal basic income become a human right?"},"description":{"default":"## Markdown text goes here\n### Abstract"},"voteOptions":[{"title":{"default":"Yes"},"value":"1"},{"title":{"default":"No"},"value":"2"}]}]}}`))
+		if err != nil {
+			log.Fatal("could not publish process info")
+		}
+		log.Infof("PROCESS INFO CID: %s", cid)
 	}
 
 	var censusManager census.CensusManager
@@ -331,6 +370,30 @@ func main() {
 		}
 		censusManager.Init(globalCfg.DataDir+"/census", "")
 	}
+
+	// Vochain Initialization
+
+	// app layer db
+	db, err := dbm.NewGoLevelDBWithOpts("vochain", globalCfg.Vochain.DataDir, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open db: %v", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	// node + app layer
+	app, vnode := vochain.Start(globalCfg.Vochain, db)
+	defer func() {
+		vnode.Stop()
+		vnode.Wait()
+	}()
+
+	oracleEthConnection := node
+	orc, err := oracle.NewOracle(oracleEthConnection, app, globalCfg.Vochain.Contract, storage)
+	if err != nil {
+		log.Fatalf("Couldn't create oracle: %s", err)
+	}
+	orc.ReadEthereumEventLogs(1000000, 1314200, globalCfg.Vochain.Contract)
 
 	// API Initialization
 	// Dvote API
@@ -349,6 +412,10 @@ func main() {
 		if globalCfg.Api.Census.Enabled {
 			routerApi.EnableCensusAPI(&censusManager)
 		}
+		if globalCfg.Api.Vote.Enabled {
+			// todo: client params as cli flags
+			routerApi.EnableVoteAPI(app)
+		}
 
 		go routerApi.Route()
 		log.Debug("Setting up API router")
@@ -356,7 +423,14 @@ func main() {
 		log.Infof("websockets API available at %s", globalCfg.Api.Route)
 	}
 
+	// close if interrupt received
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
+	os.Exit(0)
+
 	for {
 		time.Sleep(1 * time.Second)
 	}
+
 }
