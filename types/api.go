@@ -11,24 +11,33 @@ type RequestMessage struct {
 /*MetaRequest contains all of the possible request fields.
 Fields must be in alphabetical order */
 type MetaRequest struct {
-	CensusID   string   `json:"censusId,omitempty"`
-	CensusURI  string   `json:"censusUri,omitempty"`
-	ClaimData  string   `json:"claimData,omitempty"`
-	ClaimsData []string `json:"claimsData,omitempty"`
-	Content    string   `json:"content,omitempty"`
-	From       int32    `json:"from,omitempty"`
-	ListSize   int32    `json:"listSize,omitempty"`
-	Method     string   `json:"method"`
-	Name       string   `json:"name,omitempty"`
-	Nullifier  string   `json:"nullifier,omitempty"`
-	Payload    string   `json:"payload,omitempty"`
-	ProcessId  string   `json:"processId,omitempty"`
-	ProofData  string   `json:"proofData,omitempty"`
-	PubKeys    []string `json:"pubKeys,omitempty"`
-	RootHash   string   `json:"rootHash,omitempty"`
-	Timestamp  int32    `json:"timestamp"`
-	Type       string   `json:"type,omitempty"`
-	URI        string   `json:"uri,omitempty"`
+	CensusID   string          `json:"censusId,omitempty"`
+	CensusURI  string          `json:"censusUri,omitempty"`
+	ClaimData  string          `json:"claimData,omitempty"`
+	ClaimsData []string        `json:"claimsData,omitempty"`
+	Content    string          `json:"content,omitempty"`
+	From       int64           `json:"from,omitempty"`
+	ListSize   int64           `json:"listSize,omitempty"`
+	Method     string          `json:"method"`
+	Name       string          `json:"name,omitempty"`
+	Nullifier  string          `json:"nullifier,omitempty"`
+	Payload    EnvelopePayload `json:"payload,omitempty"`
+	ProcessId  string          `json:"processId,omitempty"`
+	PubKeys    []string        `json:"encryptionPublicKeys,omitempty"`
+	RootHash   string          `json:"rootHash,omitempty"`
+	Timestamp  int32           `json:"timestamp"`
+	Type       string          `json:"type,omitempty"`
+	URI        string          `json:"uri,omitempty"`
+	Signature  string          `json:"signature,omitempty"`
+}
+
+type EnvelopePayload struct {
+	VotePackage string `json:"vote-package"`
+	Nullifier   string `json:"nullifier,omitempty"`
+	Nonce       string `json:"nonce,omitempty"`
+	Proof       string `json:"proof,omitempty"`
+	Signature   string `json:"signature,omitempty"`
+	ProcessId   string `json:"processId,omitempty"`
 }
 
 //ResponseMessage wraps an api response
@@ -53,7 +62,7 @@ type MetaResponse struct {
 	Content       string   `json:"content,omitempty"`
 	Error         string   `json:"error,omitempty"`
 	Files         []byte   `json:"files,omitempty"`
-	Height        int32    `json:"height,omitempty"`
+	Height        int64    `json:"height,omitempty"`
 	InvalidClaims []int    `json:"invalidClaims,omitempty"`
 	Message       string   `json:"message,omitempty"`
 	Ok            bool     `json:"ok,omitempty"`
@@ -64,6 +73,9 @@ type MetaResponse struct {
 	Timestamp     int32    `json:"timestamp"`
 	URI           string   `json:"uri,omitempty"`
 	ValidProof    bool     `json:"validProof,omitempty"`
+	Registered    string   `json:"registered,omitempty"`
+	Nullifiers    []string `json:"nullifiers,omitempty"`
+	Payload       string   `json:"payload,omitempty"`
 }
 
 type CensusDump struct {
