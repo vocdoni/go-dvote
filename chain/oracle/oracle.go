@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"time"
 
 	eth "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -96,11 +95,9 @@ func NewOracle(ethCon *chain.EthChainContext, vochainApp *app.BaseApplication, c
 type EventGenesisChanged string
 type EventChainIdChanged *big.Int
 type EventProcessCreated struct {
-	EntityAddress  [20]byte
-	ProcessId      [32]byte
-	MerkleTree     string
-	StartBlock     *big.Int
-	NumberOfBlocks *big.Int
+	EntityAddress [20]byte
+	ProcessId     [32]byte
+	MerkleTree    string
 }
 type EventProcessCanceled struct {
 	EntityAddress [20]byte
@@ -314,13 +311,13 @@ func (o *Oracle) handleLogEntryVochain(event ethtypes.Log) error {
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Debugf("PROCESS EVENT, PROCESSID STRING: %v", hex.EncodeToString(eventProcessCreated.ProcessId[:]))
-
+		log.Debugf("processid: %s", hex.EncodeToString(eventProcessCreated.ProcessId[:]))
+		log.Debugf("event process created: %+v", eventProcessCreated)
 		var topics [4]string
 		for i := range event.Topics {
 			topics[i] = event.Topics[i].Hex()
 		}
-		log.Debugf("topics: %v", topics)
+		log.Debugf("topics: %s", topics)
 		processIdx, err := o.processHandle.GetProcessIndex(eventProcessCreated.ProcessId)
 		if err != nil {
 			log.Error("cannot get process index from smartcontract")
@@ -328,10 +325,11 @@ func (o *Oracle) handleLogEntryVochain(event ethtypes.Log) error {
 		log.Debugf("Process index loaded: %v", processIdx)
 
 		processTx, err := o.processHandle.GetProcessTxArgs(eventProcessCreated.ProcessId)
+
 		if err != nil {
 			log.Errorf("Error getting process metadata: %s", err)
 		} else {
-			log.Infof("Process meta: %s", &processTx)
+			log.Infof("Process meta: %+v", processTx)
 		}
 
 		log.Debugf("signing with key: %s", o.signingKeys.EthAddrString())
@@ -347,25 +345,12 @@ func (o *Oracle) handleLogEntryVochain(event ethtypes.Log) error {
 			log.Infof("Tx after json.Marshal HandleLogVochainEntry: %s", string(tx))
 		}
 
-		res, err := o.vochainConnection.BroadcastTxCommit(tx)
+		res, err := o.vochainConnection.BroadcastTxSync(tx)
 		if err != nil {
 			log.Warnf("result tx: %s", err)
 		} else {
-			log.Infof("transaction result: %+v", res)
-			log.Infof("transactions result details: { checkTx: %s, deliverTx: %s }", res.CheckTx.String(), res.DeliverTx.String())
+			log.Infof("transaction hash: %s", res.Hash.String())
 		}
-		_, err = o.processHandle.GetOracles()
-		if err != nil {
-			log.Errorf("error getting oracles: %s", err)
-		}
-
-		_, err = o.processHandle.GetValidators()
-		if err != nil {
-			log.Errorf("error getting validators: %s", err)
-		}
-
-		// To change at some point
-		time.Sleep(2 * time.Second)
 
 	case HashLogProcessCanceled.Hex():
 		//stub
