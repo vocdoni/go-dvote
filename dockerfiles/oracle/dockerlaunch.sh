@@ -6,10 +6,10 @@ IN_MEMORY="${IN_MEMORY:-false}"
 
 echo "Using image '$IMAGE_TAG:latest'\n"
 
-#docker build -t $IMAGE_TAG -f dockerfile.oracle . || {
-#	echo "ERROR: docker image cannot be created, exiting..."
-#	exit 2
-#}
+docker build -t $IMAGE_TAG -f dockerfile.oracle . || {
+	echo "ERROR: docker image cannot be created, exiting..."
+	exit 2
+}
 
 # CHECK IF ALREADY RUNNING
 COUNT="$(docker ps -a | grep $IMAGE_TAG | wc -l)"
@@ -32,7 +32,7 @@ ENVFILE=""
 
 # RUN DOCKER
 docker run --name `echo $IMAGE_TAG-$RANDOM | tr "/" "-"` -d \
-	-p 26656:26556 -p 26657:26657 -p 31000:31000 \
+	-p 26656:26656 -p 26657:26657 -p 31000:31000 \
 	-v $PWD/run:/app/run $EXTRA_OPTS \
 	`[ -n "$ENVFILE" ] && echo -n "--env-file $ENVFILE"` \
 	$IMAGE_TAG
