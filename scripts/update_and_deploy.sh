@@ -1,5 +1,5 @@
 #!/bin/bash
-BRANCH=${BRANCH:-master}
+BRANCH=${BRANCH:-release-0.2}
 CMD=${CMD:-dvotenode}
 
 [ ! -d dockerfiles/$CMD ] && {
