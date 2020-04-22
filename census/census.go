@@ -34,10 +34,10 @@ type Namespace struct {
 }
 
 type Manager struct {
-	StorageDir string     // Root storage data dir
-	AuthWindow int32      // Time window (seconds) in which TimeStamp will be accepted if auth enabled
-	Census     Namespaces // Available namespaces
-
+	StorageDir    string        // Root storage data dir
+	AuthWindow    int32         // Time window (seconds) in which TimeStamp will be accepted if auth enabled
+	Census        Namespaces    // Available namespaces
+	LoadThreshold time.Duration // How many time will a Census stay open/loaded since the last access
 	// TODO(mvdan): should we protect Census with the mutex too?
 	TreesMu sync.RWMutex
 	Trees   map[string]*tree.Tree // MkTrees map of merkle trees indexed by censusId
@@ -61,6 +61,7 @@ func (m *Manager) Init(storage, rootKey string) error {
 	nsConfig := fmt.Sprintf("%s/namespaces.json", storage)
 	m.StorageDir = storage
 	m.Trees = make(map[string]*tree.Tree)
+	m.LoadThreshold = 1200 * time.Second
 
 	// add a bit of buffering, to try to keep AddToImportQueue non-blocking.
 	m.importQueue = make(chan censusImport, 32)
@@ -99,22 +100,50 @@ func (m *Manager) Init(storage, rootKey string) error {
 			log.Infof("current root key %s", rootKey)
 		}
 	}
-	// Initialize existing merkle trees
-	for _, ns := range m.Census.Namespaces {
-		tr := tree.Tree{}
-		tr.StorageDir = m.StorageDir
-		err := tr.Init(ns.Name)
-		if err != nil {
-			log.Warn(err)
-		} else {
-			log.Infof("initialized merkle tree %s", ns.Name)
-			m.Trees[ns.Name] = &tr
-		}
-	}
 	// Start daemon for importing remote census
 	go m.importQueueDaemon()
+	// Start daemon for unloading trees
+	go m.unloadManager()
 
 	return nil
+}
+
+// LoadTree opens the database containing the merkle tree or returns nil if already loaded
+// Not thread safe
+func (m *Manager) LoadTree(name string) (*tree.Tree, error) {
+	if _, exist := m.Trees[name]; exist {
+		return m.Trees[name], nil
+	}
+	tr := &tree.Tree{}
+	tr.StorageDir = m.StorageDir
+	if err := tr.Init(name); err != nil {
+		return nil, err
+	}
+	log.Infof("load merkle tree %s", name)
+	m.Trees[name] = tr
+	return tr, nil
+}
+
+// UnloadTree closes the database containing the merkle tree
+// Not thread safe
+func (m *Manager) UnloadTree(name string) {
+	log.Debugf("unload merkle tree %s", name)
+	m.Trees[name].Close()
+	delete(m.Trees, name)
+	return
+}
+
+// Exists returns true if a given census exists on disk
+// While Exists() means there is a tree database with such name,
+//  Load() reads the tree from disk and create the required memory structure in order to use it
+// Not thread safe, Mutex must be controlled on the calling function
+func (m *Manager) Exists(name string) bool {
+	for _, ns := range m.Census.Namespaces {
+		if name == ns.Name {
+			return true
+		}
+	}
+	return false
 }
 
 // AddNamespace adds a new merkletree identified by a censusId (name), and
@@ -122,7 +151,7 @@ func (m *Manager) Init(storage, rootKey string) error {
 func (m *Manager) AddNamespace(name string, pubKeys []string) (*tree.Tree, error) {
 	m.TreesMu.Lock()
 	defer m.TreesMu.Unlock()
-	if _, e := m.Trees[name]; e {
+	if m.Exists(name) {
 		return nil, errors.New("namespace already exist")
 	}
 	tr := &tree.Tree{
@@ -141,12 +170,19 @@ func (m *Manager) AddNamespace(name string, pubKeys []string) (*tree.Tree, error
 
 // DelNamespace removes a merkletree namespace
 func (m *Manager) DelNamespace(name string) error {
+	if len(name) == 0 {
+		return fmt.Errorf("no valid namespace provided")
+	}
 	m.TreesMu.Lock()
 	defer m.TreesMu.Unlock()
-	if _, e := m.Trees[name]; e {
-		delete(m.Trees, name)
-		os.RemoveAll(m.StorageDir + "/" + name)
+	if !m.Exists(name) {
+		return nil
 	}
+	m.UnloadTree(name)
+	if err := os.RemoveAll(m.StorageDir + "/" + name); err != nil {
+		return fmt.Errorf("cannot remove census: (%s)", err)
+	}
+
 	for i, ns := range m.Census.Namespaces {
 		if ns.Name == name {
 			m.Census.Namespaces = m.Census.Namespaces[:i+
@@ -182,6 +218,20 @@ func checkRequest(w http.ResponseWriter, req *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// unloadManager is a blocking process that unloads trees if they are not used for some time
+func (m *Manager) unloadManager() {
+	for {
+		time.Sleep(60 * time.Second)
+		m.TreesMu.Lock()
+		for k, tree := range m.Trees {
+			if tree.LastAccess().Add(m.LoadThreshold).Before(time.Now()) {
+				m.UnloadTree(k)
+			}
+		}
+		m.TreesMu.Unlock()
+	}
 }
 
 // CheckAuth check if a census request message is authorized
@@ -298,7 +348,7 @@ func (m *Manager) importQueueDaemon() {
 		// from AddNamespace below. The namespace might appear
 		// in between the two pieces of code.
 		m.TreesMu.RLock()
-		_, exists := m.Trees[cid]
+		exists := m.Exists(cid)
 		m.TreesMu.RUnlock()
 		if exists {
 			log.Debugf("census %s already exist, skipping", cid)
@@ -341,6 +391,11 @@ func (m *Manager) importQueueDaemon() {
 			if err := m.DelNamespace(cid); err != nil {
 				log.Error(err)
 			}
+		} else {
+			// Unload until we need it
+			m.TreesMu.Lock()
+			m.UnloadTree(cid)
+			m.TreesMu.Unlock()
 		}
 	}
 }
@@ -349,6 +404,7 @@ func (m *Manager) importQueueDaemon() {
 // isAuth gives access to the private methods only if censusPrefix match or censusPrefix not defined
 // censusPrefix should usually be the Ethereum Address or a Hash of the allowed PubKey
 func (m *Manager) Handler(r *types.MetaRequest, isAuth bool, censusPrefix string) *types.MetaResponse {
+	var err error
 	resp := new(types.MetaResponse)
 
 	// Process data
@@ -386,9 +442,9 @@ func (m *Manager) Handler(r *types.MetaRequest, isAuth bool, censusPrefix string
 
 	// check if census exist
 	m.TreesMu.RLock()
-	tr, censusFound := m.Trees[r.CensusID]
+	exists := m.Exists(r.CensusID)
 	m.TreesMu.RUnlock()
-	if !censusFound {
+	if !exists {
 		resp.SetError("censusId not valid or not found")
 		return resp
 	}
@@ -401,6 +457,16 @@ func (m *Manager) Handler(r *types.MetaRequest, isAuth bool, censusPrefix string
 	} else {
 		validAuthPrefix = strings.HasPrefix(r.CensusID, censusPrefix)
 		log.Debugf("prefix allowed for %s", r.CensusID)
+	}
+
+	// Load the merkle tree
+	var tr *tree.Tree
+	m.TreesMu.Lock()
+	tr, err = m.LoadTree(r.CensusID)
+	m.TreesMu.Unlock()
+	if err != nil {
+		resp.SetError("censusId cannot be loaded")
+		return resp
 	}
 
 	// Methods without rootHash
