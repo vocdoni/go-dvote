@@ -4,7 +4,7 @@ const (
 	ReleaseGenesis1 = `
 {
   "genesis_time": "2020-04-04T09:30:50.199392102Z",
-  "chain_id": "vocdoni-release-02",
+  "chain_id": "vocdoni-release-01",
   "consensus_params": {
     "block": {
       "max_bytes": "22020096",
@@ -109,7 +109,7 @@ const (
 	DevelopmentGenesis1 = `
 {
   "genesis_time": "2020-04-12T20:29:50.512370579Z",
-  "chain_id": "vocdoni-development-06",
+  "chain_id": "vocdoni-development-08",
   "consensus_params": {
     "block": {
       "max_bytes": "22020096",
