@@ -20,7 +20,7 @@ check_git() { # 0=no | 1=yes
 deploy() {
 	echo "Updating and deploying container"
 	cd dockerfiles/$CMD
-	docker-compose build
+	docker-compose pull
 	docker-compose up -d
 	exit $?
 }
