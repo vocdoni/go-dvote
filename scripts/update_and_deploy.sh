@@ -1,5 +1,5 @@
 #!/bin/bash
-BRANCH=${BRANCH:-master}
+BRANCH=${BRANCH:-release-oc2020}
 CMD=${CMD:-dvotenode}
 NAME="$CMD-$BRANCH"
 

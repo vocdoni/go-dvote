@@ -30,7 +30,7 @@ import (
 
 var (
 	// ProdSeedNodes production vochain network seed nodes
-	ProdSeedNodes = []string{"121e65eb5994874d9c05cd8d584a54669d23f294@seed.vocdoni.net:26656"}
+	ProdSeedNodes = []string{"F2E4B81A3C1C5B9D38A7F29B6EC7DFF70257D135@seed.oc.vocdoni.net:26656"}
 	// DevSeedNodes testing vochain network seed nodes
 	DevSeedNodes = []string{"7440a5b086e16620ce7b13198479016aa2b07988@seed.dev.vocdoni.net:26656"}
 )

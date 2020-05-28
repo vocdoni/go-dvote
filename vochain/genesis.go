@@ -4,8 +4,8 @@ package vochain
 const (
 	ReleaseGenesis1 = `
 {
-  "genesis_time": "2020-05-08T09:30:50.199392102Z",
-  "chain_id": "vocdoni-release-03",
+  "genesis_time": "2020-05-28T09:30:50.199392102Z",
+  "chain_id": "vocdoni-oc2020-01",
   "consensus_params": {
     "block": {
       "max_bytes": "22020096",
@@ -24,37 +24,37 @@ const (
   },
   "validators": [
     {
-      "address": "243A633E60AAFB177018D76C5AA0A3DF0ACC13D1",
+      "address": "8818C252BD0FD0A06B06CBEA79CA6DF8872996FA",
       "pub_key": {
         "type": "tendermint/PubKeyEd25519",
-        "value": "MlOJMC1nwAYDmaju+2VJijoIO6cBF36Ygmsdc4gKZtk="
+        "value": "UhAW972a9FDsKmpF9ayh5VdfUo6A0AAWiE9ztleHBqs="
       },
       "power": "10",
       "name": ""
     },
     {
-      "address": "5DC922017285EC24415F3E7ECD045665EADA8B5A",
+      "address": "40AB065BCCC03EC8A7160E1FC125C6F17BA9FAE0",
       "pub_key": {
         "type": "tendermint/PubKeyEd25519",
-        "value": "4MlhCW62N/5bj5tD66//h9RnsAh+xjAdMU8lGiEwvyM="
+        "value": "4Quwe8cmefUiLND8Zq4bz2KHdpzpu+RNxez/w/mGGzA="
       },
       "power": "10",
       "name": ""
     },
     {
-      "address": "77EA441EA0EB29F049FC57DE524C55833A7FF575",
+      "address": "5BF6C1C067FC61C4C09CC3D930D27DC411210902",
       "pub_key": {
         "type": "tendermint/PubKeyEd25519",
-        "value": "GyZfKNK3lT5AQXQ4pwrVdgG3rRisx9tS4bM9EIZ0zYY="
+        "value": "RIZi6LSQDrTA+5kRFKqP08SbG7GB+YR03LwprokPkx4="
       },
       "power": "10",
       "name": ""
     },
     {
-      "address": "D8C253A41C7D8EE0E2AD04B2A1B6AED37FAE18E7",
+      "address": "F3BEA2B40DF378CC1FFB621546629C82CE21EFC9",
       "pub_key": {
         "type": "tendermint/PubKeyEd25519",
-        "value": "zNYNrEVl0tGegjLgq8ZQOHUC+glzpHnmOs9x+9n9UgQ="
+        "value": "bZIr9Sn8vLpgnNPI0xmYNzjLBud4MBHTR17BfR5z+xc="
       },
       "power": "10",
       "name": ""
@@ -64,48 +64,48 @@ const (
   "app_state": {
     "validators": [
       {
-        "address": "243A633E60AAFB177018D76C5AA0A3DF0ACC13D1",
+        "address": "8818C252BD0FD0A06B06CBEA79CA6DF8872996FA",
         "pub_key": {
           "type": "tendermint/PubKeyEd25519",
-          "value": "MlOJMC1nwAYDmaju+2VJijoIO6cBF36Ygmsdc4gKZtk="
+          "value": "UhAW972a9FDsKmpF9ayh5VdfUo6A0AAWiE9ztleHBqs="
         },
         "power": "10",
-        "name": ""
+        "name": "miner1"
       },
       {
-        "address": "5DC922017285EC24415F3E7ECD045665EADA8B5A",
+        "address": "40AB065BCCC03EC8A7160E1FC125C6F17BA9FAE0",
         "pub_key": {
           "type": "tendermint/PubKeyEd25519",
-          "value": "4MlhCW62N/5bj5tD66//h9RnsAh+xjAdMU8lGiEwvyM="
+          "value": "4Quwe8cmefUiLND8Zq4bz2KHdpzpu+RNxez/w/mGGzA="
         },
         "power": "10",
-        "name": ""
+        "name": "miner2"
       },
       {
-        "address": "77EA441EA0EB29F049FC57DE524C55833A7FF575",
+        "address": "5BF6C1C067FC61C4C09CC3D930D27DC411210902",
         "pub_key": {
           "type": "tendermint/PubKeyEd25519",
-          "value": "GyZfKNK3lT5AQXQ4pwrVdgG3rRisx9tS4bM9EIZ0zYY="
+          "value": "RIZi6LSQDrTA+5kRFKqP08SbG7GB+YR03LwprokPkx4="
         },
         "power": "10",
-        "name": ""
+        "name": "miner3"
       },
       {
-        "address": "D8C253A41C7D8EE0E2AD04B2A1B6AED37FAE18E7",
+        "address": "F3BEA2B40DF378CC1FFB621546629C82CE21EFC9",
         "pub_key": {
           "type": "tendermint/PubKeyEd25519",
-          "value": "zNYNrEVl0tGegjLgq8ZQOHUC+glzpHnmOs9x+9n9UgQ="
+          "value": "bZIr9Sn8vLpgnNPI0xmYNzjLBud4MBHTR17BfR5z+xc="
         },
         "power": "10",
-        "name": ""
+        "name": "miner4"
       }
         ],
     "oracles": [
-      "0x73ab4566b2e404e2be4fe9a8fb007f4014292c0c"
+      "ba8bf885892506f7c957f1623e144ee1a25a66c7"
     ]
   }
 }
-`
+  `
 
 	DevelopmentGenesis1 = `
 {
