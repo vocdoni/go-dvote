@@ -101,7 +101,8 @@ const (
       }
         ],
     "oracles": [
-      "ba8bf885892506f7c957f1623e144ee1a25a66c7"
+      "ba8bf885892506f7c957f1623e144ee1a25a66c7",
+	  "dab04e20f00d7967fc0e7dc99addf6194e1b5af7"
     ]
   }
 }
