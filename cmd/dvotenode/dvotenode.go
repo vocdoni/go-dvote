@@ -113,28 +113,34 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	// parse flags
 	flag.Parse()
 
-	if globalCfg.Dev {
-		globalCfg.DataDir += "/dev"
-	}
 	// setting up viper
 	viper := viper.New()
-	viper.AddConfigPath(globalCfg.DataDir)
 	viper.SetConfigName("dvote")
 	viper.SetConfigType("yml")
 	viper.SetEnvPrefix("DVOTE")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	// binding flags to viper
-
-	// global
+	// Set FlagVars first
 	viper.BindPFlag("dataDir", flag.Lookup("dataDir"))
+	globalCfg.DataDir = viper.Get("dataDir").(string)
+	viper.BindPFlag("dev", flag.Lookup("dev"))
+	globalCfg.Dev = viper.Get("dev").(bool)
+
+	// If dev enabled, modify dataDir
+	if globalCfg.Dev {
+		globalCfg.DataDir += "/dev"
+	}
+	// Add viper config path (now we know it)
+	viper.AddConfigPath(globalCfg.DataDir)
+
+	// binding flags to viper
+	// global
 	viper.BindPFlag("mode", flag.Lookup("mode"))
 	viper.BindPFlag("logLevel", flag.Lookup("logLevel"))
 	viper.BindPFlag("logErrorFile", flag.Lookup("logErrorFile"))
 	viper.BindPFlag("logOutput", flag.Lookup("logOutput"))
 	viper.BindPFlag("saveConfig", flag.Lookup("saveConfig"))
-	viper.BindPFlag("dev", flag.Lookup("dev"))
 
 	// api
 	viper.BindPFlag("api.file", flag.Lookup("fileApi"))
@@ -410,7 +416,7 @@ func main() {
 		if globalCfg.Mode == "gateway" && globalCfg.API.Results {
 			scrutinizer = true
 		}
-		vnode, sc, vinfo, err = service.Vochain(globalCfg.VochainConfig, globalCfg.Dev, scrutinizer, ma)
+		vnode, sc, vinfo, err = service.Vochain(globalCfg.VochainConfig, globalCfg.Dev, scrutinizer, true, ma)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -442,6 +448,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		go kk.RevealUnpublished()
 		go kk.PrintInfo(time.Second * 20)
 	}
 
