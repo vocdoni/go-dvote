@@ -30,7 +30,7 @@ import (
 
 var (
 	// ProdSeedNodes production vochain network seed nodes
-	ProdSeedNodes = []string{"F2E4B81A3C1C5B9D38A7F29B6EC7DFF70257D135@seed.oc.vocdoni.net:26656"}
+	ProdSeedNodes = []string{"f2e4b81a3c1c5b9d38a7f29b6ec7dff70257d135@seed.oc.vocdoni.net:26656"}
 	// DevSeedNodes testing vochain network seed nodes
 	DevSeedNodes = []string{"7440a5b086e16620ce7b13198479016aa2b07988@seed.dev.vocdoni.net:26656"}
 )
@@ -109,8 +109,8 @@ func newTendermint(app *BaseApplication, localConfig *config.VochainCfg, genesis
 	tconfig.LogLevel = localConfig.LogLevel
 	tconfig.RPC.ListenAddress = "tcp://" + localConfig.RPCListen
 	tconfig.P2P.ListenAddress = "tcp://" + localConfig.P2PListen
-	tconfig.P2P.AllowDuplicateIP = false
 	tconfig.P2P.AddrBookStrict = true
+	tconfig.P2P.AllowDuplicateIP = false
 	if localConfig.Dev {
 		tconfig.P2P.AllowDuplicateIP = true
 		tconfig.P2P.AddrBookStrict = false
@@ -168,6 +168,7 @@ func newTendermint(app *BaseApplication, localConfig *config.VochainCfg, genesis
 	if err := tconfig.ValidateBasic(); err != nil {
 		return nil, fmt.Errorf("config is invalid: %w", err)
 	}
+	log.Debugf("tendermint config:\n%+v\n%+v\n%v\n%v", *tconfig, *tconfig.P2P, *tconfig.Consensus, *tconfig.RPC)
 
 	// create logger
 	logger := tmlog.Logger(&tenderLogger{})
