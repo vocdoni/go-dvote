@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"math/rand"
+	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,10 +41,8 @@ type EthChainContext struct {
 }
 
 type EthChainConfig struct {
-	WSHost         string
-	WSPort         int
-	HTTPHost       string
-	HTTPPort       int
+	RPCHost        string
+	RPCPort        int
 	NodePort       int
 	NetworkId      int
 	NetworkGenesis []byte
@@ -62,10 +63,8 @@ func NewConfig(ethCfg *config.EthCfg, w3Cfg *config.W3Cfg) (*EthChainConfig, err
 	}
 
 	cfg := new(EthChainConfig)
-	cfg.WSHost = w3Cfg.WsHost
-	cfg.WSPort = w3Cfg.WsPort
-	cfg.HTTPHost = w3Cfg.HTTPHost
-	cfg.HTTPPort = w3Cfg.HTTPPort
+	cfg.RPCHost = w3Cfg.RPCHost
+	cfg.RPCPort = w3Cfg.RPCPort
 	cfg.NodePort = ethCfg.NodePort
 	cfg.NetworkId = chainSpecs.NetworkId
 	cfg.NetworkGenesis, err = base64.StdEncoding.DecodeString(chainSpecs.GenesisB64)
@@ -111,11 +110,11 @@ func (e *EthChainContext) init(c *EthChainConfig) error {
 	nodeConfig := node.DefaultConfig
 	nodeConfig.InsecureUnlockAllowed = true
 	nodeConfig.NoUSB = true
-	nodeConfig.WSHost = c.WSHost
-	nodeConfig.WSPort = c.WSPort
+	nodeConfig.WSHost = c.RPCHost
+	nodeConfig.WSPort = c.RPCPort
 	nodeConfig.WSModules = []string{}
-	nodeConfig.HTTPHost = c.HTTPHost
-	nodeConfig.HTTPPort = c.HTTPPort
+	nodeConfig.HTTPHost = c.RPCHost
+	nodeConfig.HTTPPort = c.RPCPort
 	nodeConfig.HTTPCors = []string{""}
 	nodeConfig.HTTPVirtualHosts = []string{"*"}
 	nodeConfig.HTTPModules = []string{}
@@ -195,14 +194,34 @@ func (e *EthChainContext) Start() {
 		log.Infof("my Ethereum address %x", e.Keys.Accounts()[0].Address)
 	}
 	if len(e.DefaultConfig.W3external) == 0 {
-		utils.StartNode(e.Node)
+
+		// Don't use ethereum's utils.StartNode. It sets up a signal
+		// handler for SIGINT, which interferes with the signal handler
+		// we set up in our own main func. We want to use ethereum as a
+		// "pure" library, so it shouldn't be using signals.
+		if err := e.Node.Start(); err != nil {
+			log.Fatalf("error starting ethereum node: %v", err)
+		}
 
 		log.Infof("started Ethereum Blockchain service with Network ID %d", e.DefaultConfig.NetworkId)
-		if e.DefaultConfig.WSPort > 0 {
-			log.Infof("web3 WebSockets endpoint ws://%s:%d", e.DefaultConfig.WSHost, e.DefaultConfig.WSPort)
-		}
-		if e.DefaultConfig.HTTPPort > 0 {
-			log.Infof("web3 HTTP endpoint http://%s:%d", e.DefaultConfig.HTTPHost, e.DefaultConfig.HTTPPort)
+		if e.DefaultConfig.RPCPort >= 0 && e.DefaultConfig.RPCHost != "" { // if host == "" RPC API is not initialized
+			if e.DefaultConfig.RPCPort == 0 {
+				// assign a random port
+				// 1-1024 are only available to root.
+				// if port already binded generate new one
+				for {
+					e.DefaultConfig.RPCPort = 1025 + rand.Intn(50000)
+					ln, err := net.Listen("tcp", ":"+strconv.Itoa(e.DefaultConfig.RPCPort))
+					if err != nil {
+						continue
+					}
+					_ = ln.Close()
+					log.Infof("RPC port is set to 0. Using random port %d", e.DefaultConfig.RPCPort)
+					break
+				}
+			}
+			log.Infof("web3 websocket rpc api endpoint initialized at ws://%s:%d", e.DefaultConfig.RPCHost, e.DefaultConfig.RPCPort)
+			log.Infof("web3 http rpc api endpoint initialized at http://%s:%d", e.DefaultConfig.RPCHost, e.DefaultConfig.RPCPort)
 		}
 
 		if !e.DefaultConfig.LightMode {
@@ -311,7 +330,7 @@ func (e *EthChainContext) SyncInfo() (info EthSyncInfo, err error) {
 		return
 	}
 	// Fast sync
-	if e.Eth != nil {
+	if e.Eth != nil && e.Node != nil {
 		info.Mode = "fast"
 		info.Synced = e.Eth.Synced()
 		if info.Synced {

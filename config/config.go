@@ -41,6 +41,8 @@ func (c *DvoteCfg) ValidMode() bool {
 		break
 	case "miner":
 		break
+	case "web3":
+		break
 	default:
 		return false
 	}
@@ -121,22 +123,14 @@ type EthCfg struct {
 type W3Cfg struct {
 	// Enabled if true w3 will be initialized
 	Enabled bool
-	// WsHost node websocket host endpoint
-	WsHost string
-	// WsPort node websocket port endpoint
-	WsPort int
-	// HTTPHost node http host endpoint
-	HTTPHost string
-	// HTTPPort node http port endpoint
-	HTTPPort int
+	// RPCHost node websocket host endpoint
+	RPCHost string
+	// RPCPort node websocket port endpoint
+	RPCPort int
 	// Route web3 route endpoint
 	Route string
 	// W3External URL of an external ethereum node to connect with
 	W3External string
-	// HTTPAPI if true and local node http api will be available
-	HTTPAPI bool
-	// WSAPI if true and local node ws api will be available
-	WSAPI bool
 }
 
 type EthEventCfg struct {
@@ -185,6 +179,8 @@ type VochainCfg struct {
 	MempoolSize int
 	// KeyKeeperIndex is the index used by the key keeper (usualy and oracle)
 	KeyKeeperIndex int8
+	// ImportPreviousCensus if true the census downloader will try to download all census (not only the new ones)
+	ImportPreviousCensus bool
 }
 
 // OracleCfg includes all possible config params needed by the Oracle

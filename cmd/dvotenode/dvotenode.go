@@ -27,8 +27,6 @@ import (
 	"gitlab.com/vocdoni/go-dvote/vochain/vochaininfo"
 )
 
-var ethNoWaitSync bool
-
 func newConfig() (*config.DvoteCfg, config.Error) {
 	var err error
 	var cfgError config.Error
@@ -56,7 +54,7 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	globalCfg.LogErrorFile = *flag.String("logErrorFile", "", "Log errors and warnings to a file")
 	globalCfg.SaveConfig = *flag.Bool("saveConfig", false, "overwrites an existing config file with the CLI provided flags")
 	// TODO(mvdan): turn this into an enum to avoid human error
-	globalCfg.Mode = *flag.String("mode", "gateway", "global operation mode. Available options: [gateway,oracle,miner]")
+	globalCfg.Mode = *flag.String("mode", "gateway", "global operation mode. Available options: [gateway,web3,oracle,miner]")
 	// api
 	globalCfg.API.File = *flag.Bool("fileApi", true, "enable file API")
 	globalCfg.API.Census = *flag.Bool("censusApi", true, "enable census API")
@@ -84,10 +82,9 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	// ethereum web3
 	globalCfg.W3Config.Enabled = *flag.Bool("w3Enabled", true, "if true web3 will be enabled")
 	globalCfg.W3Config.Route = *flag.String("w3Route", "/web3", "web3 endpoint API route")
-	globalCfg.W3Config.WsPort = *flag.Int("w3WsPort", 9092, "web3 websocket port")
-	globalCfg.W3Config.WsHost = *flag.String("w3WsHost", "0.0.0.0", "web3 websocket host")
-	globalCfg.W3Config.HTTPPort = *flag.Int("w3HTTPPort", 9091, "ethereum http server port")
-	globalCfg.W3Config.HTTPHost = *flag.String("w3HTTPHost", "0.0.0.0", "ethereum http server host")
+	globalCfg.W3Config.RPCPort = *flag.Int("w3RPCPort", 9091, "web3 RPC port")
+	globalCfg.W3Config.RPCHost = *flag.String("w3RPCHost", "127.0.0.1", "web3 RPC host")
+
 	// ipfs
 	globalCfg.Ipfs.NoInit = *flag.Bool("ipfsNoInit", false, "disables inter planetary file system support")
 	globalCfg.Ipfs.SyncKey = *flag.String("ipfsSyncKey", "", "enable IPFS cluster synchronization using the given secret key")
@@ -95,7 +92,7 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	// vochain
 	globalCfg.VochainConfig.P2PListen = *flag.String("vochainP2PListen", "0.0.0.0:26656", "p2p host and port to listent for the voting chain")
 	globalCfg.VochainConfig.PublicAddr = *flag.String("vochainPublicAddr", "", "external addrress:port to announce to other peers (automatically guessed if empty)")
-	globalCfg.VochainConfig.RPCListen = *flag.String("vochainRPCListen", "0.0.0.0:26657", "rpc host and port to listent for the voting chain")
+	globalCfg.VochainConfig.RPCListen = *flag.String("vochainRPCListen", "127.0.0.1:26657", "rpc host and port to listen for the voting chain")
 	globalCfg.VochainConfig.CreateGenesis = *flag.Bool("vochainCreateGenesis", false, "create own/testing genesis file on vochain")
 	globalCfg.VochainConfig.Genesis = *flag.String("vochainGenesis", "", "use alternative genesis file for the voting chain")
 	globalCfg.VochainConfig.LogLevel = *flag.String("vochainLogLevel", "error", "voting chain node log level")
@@ -107,6 +104,7 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	globalCfg.VochainConfig.SeedMode = *flag.Bool("vochainSeedMode", false, "act as a vochain seed node")
 	globalCfg.VochainConfig.MempoolSize = *flag.Int("vochainMempoolSize", 200000, "vochain mempool size")
 	globalCfg.VochainConfig.KeyKeeperIndex = *flag.Int8("keyKeeperIndex", 0, "if this node is a key keeper, use this index slot")
+	globalCfg.VochainConfig.ImportPreviousCensus = *flag.Bool("importPreviousCensus", false, "if enabled the census downloader will import all existing census")
 	// metrics
 	globalCfg.Metrics.Enabled = *flag.Bool("metricsEnabled", false, "enable prometheus metrics")
 	globalCfg.Metrics.RefreshInterval = *flag.Int("metricsRefreshInterval", 5, "metrics refresh interval in seconds")
@@ -172,10 +170,8 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	// ethereum web3
 	viper.BindPFlag("w3Config.route", flag.Lookup("w3Route"))
 	viper.BindPFlag("w3Config.enabled", flag.Lookup("w3Enabled"))
-	viper.BindPFlag("w3Config.wsPort", flag.Lookup("w3WsPort"))
-	viper.BindPFlag("w3Config.wsHost", flag.Lookup("w3WsHost"))
-	viper.BindPFlag("w3Config.httpPort", flag.Lookup("w3HTTPPort"))
-	viper.BindPFlag("w3Config.httpHost", flag.Lookup("w3HTTPHost"))
+	viper.BindPFlag("w3Config.RPCPort", flag.Lookup("w3RPCPort"))
+	viper.BindPFlag("w3Config.RPCHost", flag.Lookup("w3RPCHost"))
 
 	// ipfs
 	viper.Set("ipfs.configPath", globalCfg.DataDir+"/ipfs")
@@ -200,6 +196,7 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	viper.BindPFlag("vochainConfig.Dev", flag.Lookup("dev"))
 	viper.BindPFlag("vochainConfig.MempoolSize", flag.Lookup("vochainMempoolSize"))
 	viper.BindPFlag("vochainConfig.KeyKeeperIndex", flag.Lookup("keyKeeperIndex"))
+	viper.BindPFlag("vochainConfig.ImportPreviousCensus", flag.Lookup("importPreviousCensus"))
 
 	// metrics
 	viper.BindPFlag("metrics.enabled", flag.Lookup("metricsEnabled"))
@@ -346,7 +343,7 @@ func main() {
 	var kk *keykeeper.KeyKeeper
 	var ma *metrics.Agent
 
-	if globalCfg.Mode == "gateway" || globalCfg.Mode == "oracle" {
+	if globalCfg.Mode == "gateway" || globalCfg.Mode == "oracle" || globalCfg.Mode == "web3" {
 		// Signing key
 		signer = new(ethereum.SignKeys)
 		// Add Authorized keys for private methods
@@ -374,7 +371,8 @@ func main() {
 		}
 	}
 
-	if globalCfg.Mode == "gateway" || globalCfg.Metrics.Enabled {
+	// Websockets and HTTPs proxy
+	if globalCfg.Mode == "gateway" || globalCfg.Mode == "web3" || globalCfg.Metrics.Enabled {
 		// Proxy service
 		pxy, err = service.Proxy(globalCfg.API.ListenHost, globalCfg.API.ListenPort,
 			globalCfg.API.Ssl.Domain, globalCfg.API.Ssl.DirCert)
@@ -401,11 +399,12 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+			cm.RemoteStorage = storage
 		}
 	}
 
 	// Ethereum service
-	if globalCfg.Mode == "gateway" || globalCfg.Mode == "oracle" {
+	if (globalCfg.Mode == "gateway" && globalCfg.W3Config.Enabled) || globalCfg.Mode == "oracle" || globalCfg.Mode == "web3" {
 		node, err = service.Ethereum(globalCfg.EthConfig, globalCfg.W3Config, pxy, signer, ma)
 		if err != nil {
 			log.Fatal(err)
@@ -413,12 +412,12 @@ func main() {
 	}
 
 	// Vochain and Scrutinizer service
-	if globalCfg.API.Vote || globalCfg.Mode == "miner" || globalCfg.Mode == "oracle" {
-		scrutinizer := false
-		if globalCfg.Mode == "gateway" && globalCfg.API.Results {
-			scrutinizer = true
-		}
-		vnode, sc, vinfo, err = service.Vochain(globalCfg.VochainConfig, globalCfg.Dev, scrutinizer, !globalCfg.VochainConfig.NoWaitSync, ma)
+	if !globalCfg.API.Vote && globalCfg.API.Census {
+		log.Fatal("census API needs the vote API enabled")
+	}
+	if (globalCfg.Mode == "gateway" && globalCfg.API.Vote) || globalCfg.Mode == "miner" || globalCfg.Mode == "oracle" {
+		scrutinizer := (globalCfg.Mode == "gateway" && globalCfg.API.Results)
+		vnode, sc, vinfo, err = service.Vochain(globalCfg.VochainConfig, globalCfg.Dev, scrutinizer, !globalCfg.VochainConfig.NoWaitSync, ma, cm)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -441,7 +440,7 @@ func main() {
 	}
 
 	// Start keykeeper service
-	if globalCfg.Mode == "oracle" {
+	if globalCfg.Mode == "oracle" && globalCfg.VochainConfig.KeyKeeperIndex > 0 {
 		kk, err = keykeeper.NewKeyKeeper(globalCfg.VochainConfig.DataDir+"/keykeeper", vnode, signer, globalCfg.VochainConfig.KeyKeeperIndex)
 		if err != nil {
 			log.Fatal(err)
@@ -450,7 +449,7 @@ func main() {
 		go kk.PrintInfo(time.Second * 20)
 	}
 
-	if globalCfg.Mode == "gateway" || globalCfg.Mode == "oracle" {
+	if (globalCfg.Mode == "gateway" && globalCfg.W3Config.Enabled) || globalCfg.Mode == "oracle" {
 		// Wait for Ethereum to be ready
 		if !globalCfg.EthConfig.NoWaitSync {
 			for {
@@ -463,16 +462,8 @@ func main() {
 		}
 
 		// Ethereum events service (needs Ethereum synchronized)
-		if (!globalCfg.EthConfig.NoWaitSync && globalCfg.Mode == "gateway" && globalCfg.EthEventConfig.CensusSync) || globalCfg.Mode == "oracle" {
+		if !globalCfg.EthConfig.NoWaitSync && globalCfg.Mode == "oracle" {
 			var evh []ethevents.EventHandler
-
-			if globalCfg.Mode == "gateway" {
-				if globalCfg.EthEventConfig.CensusSync && !globalCfg.API.Census {
-					log.Fatal("censusSync function requires the census API enabled")
-				} else {
-					evh = append(evh, ethevents.HandleCensus)
-				}
-			}
 
 			if globalCfg.Mode == "oracle" {
 				evh = append(evh, ethevents.HandleVochainOracle)
@@ -490,7 +481,7 @@ func main() {
 				log.Fatal(err)
 			}
 			// Register the event handlers
-			if err := service.EthEvents(globalCfg.EthConfig.ProcessDomain, globalCfg.W3Config.WsHost, globalCfg.W3Config.WsPort,
+			if err := service.EthEvents(globalCfg.EthConfig.ProcessDomain, globalCfg.W3Config.RPCHost, globalCfg.W3Config.RPCPort,
 				initBlock, int64(syncInfo.Height), globalCfg.EthEventConfig.SubscribeOnly, cm, signer, vnode, evh); err != nil {
 				log.Fatal(err)
 			}

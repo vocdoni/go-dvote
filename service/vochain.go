@@ -10,16 +10,18 @@ import (
 
 	voclient "github.com/tendermint/tendermint/rpc/client"
 
+	"gitlab.com/vocdoni/go-dvote/census"
 	"gitlab.com/vocdoni/go-dvote/config"
 	"gitlab.com/vocdoni/go-dvote/log"
 	"gitlab.com/vocdoni/go-dvote/metrics"
 	"gitlab.com/vocdoni/go-dvote/util"
 	"gitlab.com/vocdoni/go-dvote/vochain"
+	"gitlab.com/vocdoni/go-dvote/vochain/censusdownloader"
 	"gitlab.com/vocdoni/go-dvote/vochain/scrutinizer"
 	"gitlab.com/vocdoni/go-dvote/vochain/vochaininfo"
 )
 
-func Vochain(vconfig *config.VochainCfg, dev, results bool, waitForSync bool, ma *metrics.Agent) (vnode *vochain.BaseApplication, sc *scrutinizer.Scrutinizer, vi *vochaininfo.VochainInfo, err error) {
+func Vochain(vconfig *config.VochainCfg, dev, results bool, waitForSync bool, ma *metrics.Agent, cm *census.Manager) (vnode *vochain.BaseApplication, sc *scrutinizer.Scrutinizer, vi *vochaininfo.VochainInfo, err error) {
 	log.Info("creating vochain service")
 	var host, port string
 	var ip net.IP
@@ -44,7 +46,7 @@ func Vochain(vconfig *config.VochainCfg, dev, results bool, waitForSync bool, ma
 	}
 	log.Infof("vochain listening on: %s", vconfig.P2PListen)
 	log.Infof("vochain exposed IP address: %s", vconfig.PublicAddr)
-
+	log.Infof("vochain RPC listening on: %s", vconfig.RPCListen)
 	// Genesis file
 	var genesisBytes []byte
 
@@ -92,6 +94,10 @@ func Vochain(vconfig *config.VochainCfg, dev, results bool, waitForSync bool, ma
 		if err != nil {
 			return
 		}
+	}
+	if cm != nil {
+		log.Infof("starting census downloader service")
+		censusdownloader.NewCensusDownloader(vnode, cm, !vconfig.ImportPreviousCensus)
 	}
 	// Grab metrics
 	go vnode.CollectMetrics(ma)
