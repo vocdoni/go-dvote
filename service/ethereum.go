@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -30,25 +31,36 @@ func Ethereum(ethconfig *config.EthCfg, w3config *config.W3Cfg, pxy *net.Proxy, 
 
 	os.RemoveAll(ethconfig.DataDir + "/keystore/tmp")
 	node.Keys = keystore.NewPlaintextKeyStore(ethconfig.DataDir + "/keyStore/tmp")
-	if _, err := node.Keys.ImportECDSA(&signer.Private, ""); err != nil {
-		if err != keystore.ErrAccountAlreadyExists {
-			return nil, err
-		}
+	if _, err := node.Keys.ImportECDSA(&signer.Private, ""); err != nil && err != keystore.ErrAccountAlreadyExists {
+		return nil, err
 	}
 
 	// Start Ethereum node
 	node.Start()
 	go node.PrintInfo(time.Second * 20)
+	w3uri := w3cfg.W3external
+	if w3uri == "" {
+		// Grab ethereum metrics loop
+		go node.CollectMetrics(ma)
+		log.Infof("ethereum node listening on %s", node.Node.Server().NodeInfo().ListenAddr)
+		w3uri = fmt.Sprintf("http://%s:%d", w3cfg.RPCHost, w3cfg.RPCPort)
+	}
 
-	// Grab ethereum metrics loop
-	go node.CollectMetrics(ma)
-
-	log.Infof("ethereum node listening on %s", node.Node.Server().NodeInfo().ListenAddr)
 	if w3config.Enabled && pxy != nil {
-		pxy.AddHandler(w3config.Route, pxy.AddEndpoint(fmt.Sprintf("http://%s:%d", w3cfg.RPCHost, w3cfg.RPCPort)))
-		log.Infof("web3 endpoint available at %s", w3config.Route)
-		pxy.AddWsHandler(w3config.Route+"ws", pxy.AddWsHTTPBridge(fmt.Sprintf("ws://%s:%d", w3cfg.RPCHost, w3cfg.RPCPort)))
-		log.Infof("web3 endpoint available at %s", w3config.Route+"ws")
+		if !strings.HasPrefix(w3uri, "http") {
+			log.Warnf("web3 http API requires http or https web3 external, disabling it")
+		} else {
+			pxy.AddHandler(w3config.Route, pxy.AddEndpoint(w3uri))
+			log.Infof("web3 http endpoint available at %s", w3config.Route)
+		}
+		if strings.HasPrefix(w3uri, "http") {
+			pxy.AddWsHandler(w3config.Route+"ws", pxy.AddWsHTTPBridge(w3uri))
+		} else if strings.HasPrefix(w3uri, "ws") {
+			pxy.AddWsHandler(w3config.Route+"ws", pxy.AddWsWsBridge(w3uri))
+		} else {
+			return nil, fmt.Errorf("no valid web3 protocol")
+		}
+		log.Infof("web3 websocket endpoint available at %s", w3config.Route+"ws")
 	}
 	return
 }

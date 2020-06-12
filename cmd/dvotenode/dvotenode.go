@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -19,7 +20,7 @@ import (
 	"gitlab.com/vocdoni/go-dvote/data"
 	"gitlab.com/vocdoni/go-dvote/log"
 	"gitlab.com/vocdoni/go-dvote/metrics"
-	"gitlab.com/vocdoni/go-dvote/net"
+	vnet "gitlab.com/vocdoni/go-dvote/net"
 	"gitlab.com/vocdoni/go-dvote/service"
 	"gitlab.com/vocdoni/go-dvote/vochain"
 	"gitlab.com/vocdoni/go-dvote/vochain/keykeeper"
@@ -80,6 +81,7 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	globalCfg.EthEventConfig.CensusSync = *flag.Bool("ethCensusSync", true, "automatically import new census published on the smart contract")
 	globalCfg.EthEventConfig.SubscribeOnly = *flag.Bool("ethSubscribeOnly", false, "only subscribe to new ethereum events (do not read past log)")
 	// ethereum web3
+	globalCfg.W3Config.W3External = *flag.String("w3External", "", "use an external web3 endpoint (if set, local Ethereum node will not be started)")
 	globalCfg.W3Config.Enabled = *flag.Bool("w3Enabled", true, "if true web3 will be enabled")
 	globalCfg.W3Config.Route = *flag.String("w3Route", "/web3", "web3 endpoint API route")
 	globalCfg.W3Config.RPCPort = *flag.Int("w3RPCPort", 9091, "web3 RPC port")
@@ -168,6 +170,7 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	viper.BindPFlag("ethEventConfig.subscribeOnly", flag.Lookup("ethSubscribeOnly"))
 
 	// ethereum web3
+	viper.BindPFlag("w3Config.w3External", flag.Lookup("w3External"))
 	viper.BindPFlag("w3Config.route", flag.Lookup("w3Route"))
 	viper.BindPFlag("w3Config.enabled", flag.Lookup("w3Enabled"))
 	viper.BindPFlag("w3Config.RPCPort", flag.Lookup("w3RPCPort"))
@@ -334,7 +337,7 @@ func main() {
 	var err error
 	var signer *ethereum.SignKeys
 	var node *chain.EthChainContext
-	var pxy *net.Proxy
+	var pxy *vnet.Proxy
 	var storage data.Storage
 	var cm *census.Manager
 	var vnode *vochain.BaseApplication
@@ -372,7 +375,8 @@ func main() {
 	}
 
 	// Websockets and HTTPs proxy
-	if globalCfg.Mode == "gateway" || globalCfg.Mode == "web3" || globalCfg.Metrics.Enabled {
+	if globalCfg.Mode == "gateway" || globalCfg.Mode == "web3" || globalCfg.Metrics.Enabled ||
+		(globalCfg.Mode == "oracle" && len(globalCfg.W3Config.W3External) > 0) {
 		// Proxy service
 		pxy, err = service.Proxy(globalCfg.API.ListenHost, globalCfg.API.ListenPort,
 			globalCfg.API.Ssl.Domain, globalCfg.API.Ssl.DirCert)
@@ -452,8 +456,12 @@ func main() {
 	if (globalCfg.Mode == "gateway" && globalCfg.W3Config.Enabled) || globalCfg.Mode == "oracle" {
 		// Wait for Ethereum to be ready
 		if !globalCfg.EthConfig.NoWaitSync {
+			requiredPeers := 2
+			if len(globalCfg.W3Config.W3External) > 0 {
+				requiredPeers = 1
+			}
 			for {
-				if info, err := node.SyncInfo(); err == nil && info.Synced && info.Peers > 1 && info.Height > 0 {
+				if info, err := node.SyncInfo(); err == nil && info.Synced && info.Peers >= requiredPeers && info.Height > 0 {
 					log.Infof("ethereum blockchain synchronized (%+v)", info)
 					break
 				}
@@ -464,11 +472,24 @@ func main() {
 		// Ethereum events service (needs Ethereum synchronized)
 		if !globalCfg.EthConfig.NoWaitSync && globalCfg.Mode == "oracle" {
 			var evh []ethevents.EventHandler
-
+			var w3uri string
+			if globalCfg.W3Config.W3External != "" {
+				// If w3 external is enabled, use the local websockets proxy
+				if !strings.HasPrefix(globalCfg.W3Config.W3External, "ws") {
+					log.Fatal("web3 external muts be websocket for event subscription")
+				}
+				prefix := "ws"
+				if globalCfg.API.Ssl.Domain != "" {
+					prefix = "wss"
+				}
+				w3uri = fmt.Sprintf("%s://127.0.0.1:%d%s", prefix, globalCfg.API.ListenPort, globalCfg.W3Config.Route+"ws")
+			} else {
+				// If local ethereum node enabled, use the Go-Ethereum websockets endpoint
+				w3uri = "ws://" + net.JoinHostPort(globalCfg.W3Config.RPCHost, fmt.Sprintf("%d", globalCfg.W3Config.RPCPort))
+			}
 			if globalCfg.Mode == "oracle" {
 				evh = append(evh, ethevents.HandleVochainOracle)
 			}
-
 			initBlock := int64(0)
 			chainSpecs, err := chain.SpecsFor(globalCfg.EthConfig.ChainType)
 			if err != nil {
@@ -480,9 +501,12 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+
 			// Register the event handlers
-			if err := service.EthEvents(globalCfg.EthConfig.ProcessDomain, globalCfg.W3Config.RPCHost, globalCfg.W3Config.RPCPort,
-				initBlock, int64(syncInfo.Height), globalCfg.EthEventConfig.SubscribeOnly, cm, signer, vnode, evh); err != nil {
+			if globalCfg.EthEventConfig.SubscribeOnly {
+				syncInfo.Height = 0
+			}
+			if err := service.EthEvents(globalCfg.EthConfig.ProcessDomain, w3uri, initBlock, int64(syncInfo.Height), cm, signer, vnode, evh); err != nil {
 				log.Fatal(err)
 			}
 		}
