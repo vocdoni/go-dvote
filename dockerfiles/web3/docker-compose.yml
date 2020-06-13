@@ -7,6 +7,7 @@ services:
       - "9080:9080"
       - "37671:37671"
       - "9081:9081"
+    restart: ${RESTART:-always}
     user: root
     volumes:
       - "eth:/app/run"
