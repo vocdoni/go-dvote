@@ -5,7 +5,7 @@ services:
   dvotenode:
     build:
       context: ../../
-    image: "vocdoni/go-dvote"
+    image: "vocdoni/go-dvote:oc2020"
     env_file: env
     volumes:
       - "run:/app/run"
