@@ -1,15 +1,17 @@
 version: "3.4"
+#envfile: env
 
 services:
   dvotenode:
     build:
       context: ../../
-    image: "vocdoni/go-dvote:oc2020"
+    image: "vocdoni/go-dvote"
     env_file: env
     volumes:
       - "run:/app/run"
+      - "eth:/app/eth:ro"
     ports:
-      - "443:9090"
+      - "9090:9090"
       - "9091:9091"
       - "4001:4001"
       - "4171:4171"
@@ -19,12 +21,26 @@ services:
       - "9096:9096"
       - "26656:26656"
       - "26657:26657"
-    restart: ${RESTART:-always}
+    restart: ${RESTART:-no}
     logging:
       driver: json-file
       options:
         max-size: "20m"
         max-file: "10"
+  eth:
+    image: openethereum/openethereum:latest
+    ports:
+      - "9080:9080"
+      - "37671:37671"
+      - "9081:9081"
+    restart: ${RESTART:-no}
+    env_file: env
+    user: root
+    volumes:
+      - "eth:/app/eth"
+      - ./files:/app/files
+    entrypoint: /app/files/openethereum.sh $RESTART
 
 volumes:
   run: {}
+  eth: {}
