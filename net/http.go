@@ -69,6 +69,11 @@ func (h *HttpContext) ConnectionType() string {
 }
 
 func (h *HttpContext) Send(msg types.Message) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warnf("recovered panic: %v", r)
+		}
+	}()
 	defer close(h.sent)
 
 	h.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(msg.Data)+1))
