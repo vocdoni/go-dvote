@@ -1,6 +1,7 @@
 package scrutinizer
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/dgraph-io/badger/v2"
@@ -128,7 +129,7 @@ func (s *Scrutinizer) addEntity(eid string, pid string) {
 		log.Error(err)
 		return
 	}
-	if err := s.Storage.Put(storagekey, append(processList, []byte(pid+types.ScrutinizerEntityProcessSeparator)...)); err != nil {
+	if err := s.Storage.Put(storagekey, append(processList, []byte(types.ScrutinizerEntityProcessSeparator+pid)...)); err != nil {
 		log.Error(err)
 		return
 	}
@@ -141,4 +142,30 @@ func emptyProcess() ProcessVotes {
 		pv[i] = make([]uint32, MaxOptions)
 	}
 	return pv
+}
+
+// ProcessList returns the list of processes (finished or not) for a specific entity.
+func (s *Scrutinizer) ProcessList(entityID string, fromID string, max int64) ([]string, error) {
+	processList, err := s.Storage.Get([]byte(types.ScrutinizerEntityPrefix + entityID))
+	if err != nil {
+		return nil, err
+	}
+	processListResult := []string{}
+	fromLock := len(fromID) > 0
+	for _, process := range bytes.Split(processList, []byte(types.ScrutinizerEntityProcessSeparator)) {
+		if len(process) == 0 {
+			continue
+		}
+		if max < 1 || len(process) < 1 {
+			break
+		}
+		if !fromLock {
+			processListResult = append(processListResult, string(process))
+			max--
+		}
+		if fromLock && fromID == string(process) {
+			fromLock = false
+		}
+	}
+	return processListResult, nil
 }

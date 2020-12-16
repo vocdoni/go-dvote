@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -192,18 +191,10 @@ func (r *Router) getProcessList(request routerRequest) {
 	if max > MaxListIterations || max <= 0 {
 		max = MaxListIterations
 	}
-	fromLock := len(request.FromID) > 0
-	for _, process := range bytes.Split(processList, []byte(types.ScrutinizerEntityProcessSeparator)) {
-		if max < 1 || len(process) < 1 {
-			break
-		}
-		if !fromLock {
-			response.ProcessList = append(response.ProcessList, string(process))
-			max--
-		}
-		if fromLock && request.FromID == string(process) {
-			fromLock = false
-		}
+	response.ProcessList, err = r.Scrutinizer.ProcessList(request.EntityId, request.FromID, max)
+	if err != nil {
+		r.sendError(request, fmt.Sprintf("cannot fetch process list: (%s)", err))
+		return
 	}
 	response.Size = new(int64)
 	*response.Size = int64(len(response.ProcessList))
