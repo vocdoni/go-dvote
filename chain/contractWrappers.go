@@ -395,6 +395,31 @@ func (ph *VotingHandle) AddOracleTxArgs(ctx context.Context, oracleAddress commo
 	return addOracleTxArgs, nil
 }
 
+// AddValidatorTxArgs returns an Admin tx instance with the validator public key to add
+func (ph *VotingHandle) AddValidatorTxArgs(ctx context.Context, validatorPubKey string, namespace uint16) (tx *models.AdminTx, err error) {
+	ns, err := ph.Namespace.GetNamespace(&ethbind.CallOpts{Context: ctx}, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get namespace: %w", err)
+	}
+	for _, validator := range ns.Validators {
+		if validator == validatorPubKey {
+			return nil, fmt.Errorf("cannot add validator, already added")
+		}
+	}
+	validatorPower := new(uint64)
+	*validatorPower = uint64(types.ValidatorDefaultPower)
+	pubKeyBytes, err := hex.DecodeString(validatorPubKey)
+	if err != nil {
+		return nil, fmt.Errorf("cannot decode validator public key: %w", err)
+	}
+	addValidatorTxArgs := &models.AdminTx{
+		PublicKey: pubKeyBytes,
+		Power:     validatorPower,
+		Txtype:    models.TxType_ADD_VALIDATOR,
+	}
+	return addValidatorTxArgs, nil
+}
+
 // TOKEN STORAGE PROOF WRAPPER
 
 // IsTokenRegistered returns true if a token represented by the given address is registered on the token storage proof contract

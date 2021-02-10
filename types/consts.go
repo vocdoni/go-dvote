@@ -25,6 +25,9 @@ const (
 	// ModeWeb3 start the dvotenode as a web3 gateway
 	ModeWeb3 = "web3"
 
+	// ValidatorDefaultPower is the default validator power assigned to a validator
+	ValidatorDefaultPower = 10
+
 	// ProcessIDsize is the size of a process id
 	ProcessIDsize = 32
 	// EthereumAddressSize is the size of an ethereum address

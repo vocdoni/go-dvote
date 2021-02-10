@@ -56,7 +56,7 @@ func AddTx(vtx *models.Tx, state *State, txID [32]byte, commit bool) ([]byte, er
 					return []byte{}, state.AddValidator(validator)
 
 				}
-				return []byte{}, fmt.Errorf("addValidator %w", err)
+				return []byte{}, fmt.Errorf("cannot addValidator %w", err)
 
 			case models.TxType_REMOVE_VALIDATOR:
 				return []byte{}, state.RemoveValidator(tx.Address)
@@ -349,6 +349,10 @@ func AdminTxCheck(vtx *models.Tx, state *State) error {
 				return fmt.Errorf("oracle already added at oracle list position %d", idx)
 			}
 		}
+	case models.TxType_ADD_VALIDATOR:
+		// check not empty public key
+		// check not empty power
+		// check valid address
 	}
 	return nil
 }

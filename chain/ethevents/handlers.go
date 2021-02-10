@@ -240,6 +240,46 @@ func HandleVochainOracle(ctx context.Context, event *ethtypes.Log, e *EthereumEv
 			return fmt.Errorf("cannot broadcast tx: %w, res: %+v", err, res)
 		}
 		log.Infof("oracle transaction sent, hash: %x", res.Hash)
+	case ethereumEventList["namespaceValidatorAdded"]:
+		tctx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+		addValidatorTx, err := namespaceValidatorAddedMeta(tctx, &e.ContractsABI[1], event.Data, e.VotingHandle)
+		if err != nil {
+			return fmt.Errorf("cannot obtain validator added data for creating the transaction: %w", err)
+		}
+		log.Infof("found add validator %x namespace event on ethereum", addValidatorTx.Address)
+		validators, err := e.VochainApp.State.Validators(true)
+		if err != nil {
+			return fmt.Errorf("cannot fetch the validator list from the Vochain: %w", err)
+		}
+		// check oracle not already on the Vochain
+		for idx, validator := range validators {
+			if bytes.Equal(validator.PubKey, addValidatorTx.Address) {
+				return fmt.Errorf("cannot add validator, already exists on the Vochain at position: %d", idx)
+			}
+		}
+		// create admin tx
+		vtx := models.Tx{}
+		addValidatorTxBytes, err := proto.Marshal(addValidatorTx)
+		if err != nil {
+			return fmt.Errorf("cannot marshal admin tx (addValidator): %w", err)
+		}
+		vtx.Signature, err = e.Signer.Sign(addValidatorTxBytes)
+		if err != nil {
+			return fmt.Errorf("cannot sign oracle tx: %w", err)
+		}
+		vtx.Payload = &models.Tx_Admin{Admin: addValidatorTx}
+		tx, err := proto.Marshal(&vtx)
+		if err != nil {
+			return fmt.Errorf("error marshaling admin tx (addValidator) tx: %w", err)
+		}
+		log.Debugf("broadcasting tx: %s", log.FormatProto(addValidatorTx))
+
+		res, err := e.VochainApp.SendTX(tx)
+		if err != nil || res == nil {
+			return fmt.Errorf("cannot broadcast tx: %w, res: %+v", err, res)
+		}
+		log.Infof("oracle transaction sent, hash: %x", res.Hash)
 	}
 	return nil
 }
@@ -303,4 +343,18 @@ func namespaceOracleAddedMeta(
 	}
 	log.Debugf("namespacesOracleAdded eventData: %+v", structuredData)
 	return ph.AddOracleTxArgs(ctx, structuredData.OracleAddress, structuredData.Namespace)
+}
+
+func namespaceValidatorAddedMeta(
+	ctx context.Context,
+	contractABI *abi.ABI,
+	eventData []byte,
+	ph *chain.VotingHandle,
+) (*models.AdminTx, error) {
+	structuredData := &contracts.NamespacesValidatorAdded{}
+	if err := contractABI.UnpackIntoInterface(structuredData, "ValidatorAdded", eventData); err != nil {
+		return nil, fmt.Errorf("cannot unpack ValidatorAdded event: %w", err)
+	}
+	log.Debugf("namespacesValidatorAdded eventData: %+v", structuredData)
+	return ph.AddValidatorTxArgs(ctx, structuredData.ValidatorPublicKey, structuredData.Namespace)
 }

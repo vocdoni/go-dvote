@@ -211,6 +211,7 @@ func (app *BaseApplication) Query(req abcitypes.RequestQuery) abcitypes.Response
 }
 
 func (app *BaseApplication) EndBlock(req abcitypes.RequestEndBlock) abcitypes.ResponseEndBlock {
+	// TODO: @jordipainan VALIDATOR CHANGES
 	return abcitypes.ResponseEndBlock{}
 }
 func (app *BaseApplication) ApplySnapshotChunk(req abcitypes.RequestApplySnapshotChunk) abcitypes.ResponseApplySnapshotChunk {
