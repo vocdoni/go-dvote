@@ -8,7 +8,6 @@ go 1.16
 require (
 	git.sr.ht/~sircmpwn/go-bare v0.0.0-20210227202403-5dae5c48f917
 	github.com/arnaucube/go-blindsecp256k1 v0.0.0-20210203222605-876755a714c3
-	github.com/asdine/storm v2.1.2+incompatible
 	github.com/asdine/storm/v3 v3.2.1
 	github.com/cosmos/iavl v0.15.3
 	github.com/deroproject/graviton v0.0.0-20200906044921-89e9e09f9601

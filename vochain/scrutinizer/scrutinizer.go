@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/asdine/storm/q"
 	storm "github.com/asdine/storm/v3"
+	"github.com/asdine/storm/v3/q"
 	"go.vocdoni.io/dvote/log"
 	"go.vocdoni.io/dvote/types"
 	"go.vocdoni.io/dvote/vochain"

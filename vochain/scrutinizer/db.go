@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/asdine/storm/codec/sereal"
 	storm "github.com/asdine/storm/v3"
+	"github.com/asdine/storm/v3/codec/sereal"
 	"go.vocdoni.io/dvote/types"
 	"go.vocdoni.io/proto/build/go/models"
 )
@@ -21,15 +21,15 @@ import (
 // since it is optimized for querying purposes and not for keeping a shared consensus state.
 type Process struct {
 	ID            types.HexBytes             `storm:"id" json:"processId"`
-	EntityID      types.HexBytes             `storm:"index" json:"entityId"`
+	EntityID      types.HexBytes             `json:"entityId"`
 	StartBlock    uint32                     `json:"startBlock"`
-	EndBlock      uint32                     `storm:"index" json:"endBlock"`
-	Rheight       uint32                     `storm:"index" json:"-"`
+	EndBlock      uint32                     `json:"endBlock"`
+	Rheight       uint32                     `json:"-"`
 	CensusRoot    types.HexBytes             `json:"censusRoot"`
 	CensusURI     string                     `json:"censusURI"`
 	CensusOrigin  int32                      `json:"censusOrigin"`
-	Status        int32                      `storm:"index" json:"status"`
-	Namespace     uint32                     `storm:"index" json:"namespace"`
+	Status        int32                      `json:"status"`
+	Namespace     uint32                     `json:"namespace"`
 	Envelope      *models.EnvelopeType       `json:"envelopeType"`
 	Mode          *models.ProcessMode        `json:"processMode"`
 	VoteOpts      *models.ProcessVoteOptions `json:"voteOptions"`

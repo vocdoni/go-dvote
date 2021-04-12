@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/asdine/storm"
+	"github.com/asdine/storm/v3"
 	"github.com/asdine/storm/v3/q"
 	"go.vocdoni.io/proto/build/go/models"
 
