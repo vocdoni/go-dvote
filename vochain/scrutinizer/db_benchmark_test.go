@@ -21,9 +21,7 @@ func BenchmarkCheckTx(b *testing.B) {
 			}
 		})
 	*/
-	b.Run("indexTx", func(b *testing.B) {
-		benchmarkIndexTx(b)
-	})
+	b.Run("indexTx", benchmarkIndexTx)
 }
 
 func benchmarkIndexTx(b *testing.B) {
@@ -55,7 +53,7 @@ func benchmarkIndexTx(b *testing.B) {
 	err = s.Generate()
 	qt.Assert(b, err, qt.IsNil)
 
-	for i := uint32(0); i < 60; i++ {
+	for i := 0; i < b.N; i++ {
 		sc.Rollback()
 		for j := int32(0); j < 2000; j++ {
 			vote := &models.Vote{
@@ -67,7 +65,7 @@ func benchmarkIndexTx(b *testing.B) {
 			}
 			sc.OnVote(vote, j)
 		}
-		err := sc.Commit(i)
+		err := sc.Commit(uint32(i))
 		qt.Assert(b, err, qt.IsNil)
 	}
 }
