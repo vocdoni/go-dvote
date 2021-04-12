@@ -55,7 +55,7 @@ func benchmarkIndexTx(b *testing.B) {
 	err = s.Generate()
 	qt.Assert(b, err, qt.IsNil)
 
-	for i := uint32(0); i < 200; i++ {
+	for i := uint32(0); i < 60; i++ {
 		sc.Rollback()
 		for j := int32(0); j < 2000; j++ {
 			vote := &models.Vote{

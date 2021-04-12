@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/asdine/storm/codec/gob"
+	"github.com/asdine/storm/codec/sereal"
 	storm "github.com/asdine/storm/v3"
 	"go.vocdoni.io/dvote/types"
 	"go.vocdoni.io/proto/build/go/models"
@@ -153,5 +153,5 @@ func (r *Results) AddVote(voteValues []int, weight *big.Int, mutex *sync.Mutex) 
 }
 
 func InitDB(dataDir string) (*storm.DB, error) {
-	return storm.Open(path.Join(dataDir, "indexer.bbolt"), storm.Codec(gob.Codec), storm.Batch())
+	return storm.Open(path.Join(dataDir, "indexer.bbolt"), storm.Codec(sereal.Codec), storm.Batch())
 }
