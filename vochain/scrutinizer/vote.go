@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 	"time"
 
-	badger "github.com/dgraph-io/badger/v3"
-	"github.com/timshannon/badgerhold/v3"
+	"github.com/asdine/storm/v3"
+	"github.com/asdine/storm/v3/q"
 	"go.vocdoni.io/proto/build/go/models"
 	"google.golang.org/protobuf/proto"
 
@@ -22,21 +21,13 @@ import (
 // it does not have yet reuslts
 var ErrNoResultsYet = fmt.Errorf("no results yet")
 
-// ErrNotFoundIndatabase is raised if a database query returns no results
-var ErrNotFoundInDatabase = badgerhold.ErrNotFound
-
-// The string to search on the KV database error to identify a transaction conflict.
-// If the KV (currently badger) returns this error, it is considered non fatal and the
-// transaction will be retried until it works.
-// This check is made comparing string in order to avoid importing a specific KV
-// implementation, thus let badgerhold abstract it.
-const kvErrorStringForRetry = "Transaction Conflict"
+var ErrNotFoundInDatabase = storm.ErrNotFound
 
 // GetVoteReference gets the reference for an AddVote transaction.
 // This reference can then be used to fetch the vote transaction directly from the BlockStore.
 func (s *Scrutinizer) GetEnvelopeReference(nullifier []byte) (*VoteReference, error) {
 	txRef := &VoteReference{}
-	return txRef, s.db.FindOne(txRef, badgerhold.Where(badgerhold.Key).Eq(nullifier))
+	return txRef, s.db.One("Nullifier", nullifier, txRef)
 }
 
 // GetEnvelope retreives an Envelope from the Blockchain block store identified by its nullifier.
@@ -68,9 +59,9 @@ func (s *Scrutinizer) GetEnvelope(nullifier []byte) (*models.VoteEnvelope, []byt
 func (s *Scrutinizer) WalkEnvelopes(processId []byte, async bool,
 	callback func(*models.VoteEnvelope, *big.Int, *sync.WaitGroup)) error {
 	wg := sync.WaitGroup{}
-	err := s.db.ForEach(
-		badgerhold.Where("ProcessID").Eq(processId).Index("ProcessID"),
-		func(txRef *VoteReference) error {
+	err := s.db.Select(q.Eq("ProcessID", processId)).Each(&VoteReference{},
+		func(t interface{}) error {
+			txRef := t.(*VoteReference)
 			stx, err := s.App.GetTx(txRef.Height, txRef.TxIndex)
 			if err != nil {
 				return err
@@ -99,9 +90,9 @@ func (s *Scrutinizer) WalkEnvelopes(processId []byte, async bool,
 func (s *Scrutinizer) GetEnvelopes(processId []byte) ([]*models.VoteEnvelope, []*big.Int, error) {
 	envelopes := []*models.VoteEnvelope{}
 	weights := []*big.Int{}
-	err := s.db.ForEach(
-		badgerhold.Where("ProcessID").Eq(processId).Index("ProcessID"),
-		func(txRef *VoteReference) error {
+	err := s.db.Select(q.Eq("ProcessID", processId)).Each(&VoteReference{},
+		func(record interface{}) error {
+			txRef := record.(*VoteReference)
 			stx, err := s.App.GetTx(txRef.Height, txRef.TxIndex)
 			if err != nil {
 				return err
@@ -126,11 +117,11 @@ func (s *Scrutinizer) GetEnvelopes(processId []byte) ([]*models.VoteEnvelope, []
 func (s *Scrutinizer) GetEnvelopeHeight(processId []byte) (int, error) {
 	// TODO: Warning, int can overflow
 	if len(processId) > 0 {
-		return s.db.Count(&VoteReference{},
-			badgerhold.Where("ProcessID").Eq(processId).Index("ProcessID"))
+		procs := []VoteReference{}
+		return len(procs), s.db.Find("ProcessID", processId, &procs)
 	}
 	// If no processId is provided, count all envelopes
-	return s.db.Count(&VoteReference{}, &badgerhold.Query{})
+	return s.db.Count(&VoteReference{})
 }
 
 // ComputeResult process a finished voting, compute the results and saves it in the Storage.
@@ -151,12 +142,12 @@ func (s *Scrutinizer) ComputeResult(processID []byte) error {
 	}
 	p.HaveResults = true
 	p.FinalResults = true
-	if err := s.db.Update(processID, p); err != nil {
+	if err := s.db.Save(p); err != nil {
 		return fmt.Errorf("computeResults: cannot update processID %x: %w, ", processID, err)
 	}
 	s.addVoteLock.Lock()
 	defer s.addVoteLock.Unlock()
-	if err := s.db.Upsert(processID, results); err != nil {
+	if err := s.db.Save(results); err != nil {
 		return err
 	}
 
@@ -169,25 +160,27 @@ func (s *Scrutinizer) ComputeResult(processID []byte) error {
 
 // GetResults returns the current result for a processId aggregated in a two dimension int slice
 func (s *Scrutinizer) GetResults(processID []byte) (*Results, error) {
-	if n, err := s.db.Count(&Process{},
-		badgerhold.Where("ID").Eq(processID).
-			And("HaveResults").Eq(true).
-			And("Status").Ne(int32(models.ProcessStatus_CANCELED))); err != nil {
-		return nil, err
-	} else if n == 0 {
-		return nil, ErrNoResultsYet
-	}
-
+	procs := []Process{}
 	s.addVoteLock.RLock()
 	defer s.addVoteLock.RUnlock()
-	results := &Results{}
-	if err := s.db.FindOne(results, badgerhold.Where("ProcessID").Eq(processID)); err != nil {
-		if err == badgerhold.ErrNotFound {
+
+	if err := s.db.Select(
+		q.Eq("ID", processID),
+		q.Eq("HaveResults", true),
+		q.Not(q.Eq("Status", int32(models.ProcessStatus_CANCELED))),
+	).Find(procs); err != nil {
+		if err == storm.ErrNotFound {
+			return nil, ErrNoResultsYet
+		}
+	}
+	results := Results{}
+	if err := s.db.One("ProcessID", processID, &results); err != nil {
+		if err == storm.ErrNotFound {
 			return nil, ErrNoResultsYet
 		}
 		return nil, err
 	}
-	return results, nil
+	return &results, nil
 }
 
 // GetResultsWeight returns the current weight of cast votes for a processId.
@@ -195,7 +188,7 @@ func (s *Scrutinizer) GetResultsWeight(processID []byte) (*big.Int, error) {
 	s.addVoteLock.RLock()
 	defer s.addVoteLock.RUnlock()
 	results := &Results{}
-	if err := s.db.FindOne(results, badgerhold.Where("ProcessID").Eq(processID)); err != nil {
+	if err := s.db.One("ProcessID", processID, results); err != nil {
 		return nil, err
 	}
 	return results.Weight, nil
@@ -276,11 +269,10 @@ func (s *Scrutinizer) addLiveVote(pid []byte, votePackage []byte, weight []byte,
 
 // addVoteIndex adds the nullifier reference to the kv for fetching vote Txs from BlockStore.
 // This method is triggered by Commit callback for each vote added to the blockchain.
-// If txn is provided the vote will be added on the transaction (without performing a commit).
 func (s *Scrutinizer) addVoteIndex(nullifier, pid []byte, blockHeight uint32,
-	weight []byte, txIndex int32, txn *badger.Txn) error {
-	if txn != nil {
-		return s.db.TxInsert(txn, nullifier, &VoteReference{
+	weight []byte, txIndex int32, tx storm.Node) error {
+	if tx == nil {
+		return s.db.Save(&VoteReference{
 			Nullifier:    nullifier,
 			ProcessID:    pid,
 			Height:       blockHeight,
@@ -289,7 +281,7 @@ func (s *Scrutinizer) addVoteIndex(nullifier, pid []byte, blockHeight uint32,
 			CreationTime: time.Now(),
 		})
 	}
-	return s.db.Insert(nullifier, &VoteReference{
+	return tx.Save(&VoteReference{
 		Nullifier:    nullifier,
 		ProcessID:    pid,
 		Height:       blockHeight,
@@ -317,57 +309,32 @@ func (s *Scrutinizer) isProcessLiveResults(pid []byte) bool {
 func (s *Scrutinizer) commitVotes(pid []byte, results *Results) error {
 	s.addVoteLock.Lock()
 	defer s.addVoteLock.Unlock()
-	update := func(record interface{}) error {
-		update, ok := record.(*Results)
-		if !ok {
-			return fmt.Errorf("record isn't the correct type! Wanted Result, got %T", record)
-		}
-		update.Weight.Add(update.Weight, results.Weight)
 
-		if len(results.Votes) == 0 {
-			return nil
-		}
-
-		if len(results.Votes) != len(update.Votes) {
-			return fmt.Errorf("commitVotes: different length for results.Vote and update.Votes")
-		}
-		for i := range update.Votes {
-			if len(update.Votes[i]) != len(results.Votes[i]) {
-				return fmt.Errorf("commitVotes: different number of options for question %d", i)
-			}
-			for j := range update.Votes[i] {
-				update.Votes[i][j].Add(update.Votes[i][j], results.Votes[i][j])
-			}
-		}
-
-		return nil
-	}
-
-	var err error
-	// If badgerhold returns a transaction conflict error message, we try again
-	// until it works (while maxTries < 1000)
-	maxTries := 1000
-	for maxTries > 0 {
-		err = s.db.UpdateMatching(&Results{},
-			badgerhold.Where("ProcessID").Eq(pid).And("Final").Eq(false), update)
-		if err == nil {
-			break
-		}
-		if strings.Contains(err.Error(), kvErrorStringForRetry) {
-			maxTries--
-			time.Sleep(5 * time.Millisecond)
-			continue
-		}
+	update := Results{}
+	if err := s.db.One("ProcessID", pid, &update); err != nil {
 		return err
 	}
-	if maxTries == 0 {
-		err = fmt.Errorf("got too much transaction conflicts")
+	update.Weight.Add(update.Weight, results.Weight)
+	if len(results.Votes) == 0 {
+		return nil
 	}
-	if err != nil {
-		log.Debugf("saved %d votes with total weight of %s on process %x", len(results.Votes),
-			results.Weight, pid)
+	if len(results.Votes) != len(update.Votes) {
+		return fmt.Errorf("commitVotes: different length for results.Vote and update.Votes")
 	}
-	return err
+	for i := range update.Votes {
+		if len(update.Votes[i]) != len(results.Votes[i]) {
+			return fmt.Errorf("commitVotes: different number of options for question %d", i)
+		}
+		for j := range update.Votes[i] {
+			update.Votes[i][j].Add(update.Votes[i][j], results.Votes[i][j])
+		}
+	}
+	if err := s.db.Update(&update); err != nil {
+		return err
+	}
+	log.Debugf("saved %d votes with total weight of %s on process %x", len(results.Votes),
+		results.Weight, pid)
+	return nil
 }
 
 func (s *Scrutinizer) computeFinalResults(p *Process) (*Results, error) {

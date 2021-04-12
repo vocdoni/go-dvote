@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timshannon/badgerhold/v3"
+	"github.com/asdine/storm/q"
+	storm "github.com/asdine/storm/v3"
 	"go.vocdoni.io/dvote/log"
 	"go.vocdoni.io/dvote/types"
 	"go.vocdoni.io/dvote/vochain"
@@ -53,14 +54,14 @@ type Scrutinizer struct {
 	liveResultsProcs sync.Map
 	// eventListeners is the list of external callbacks that will be executed by the scrutinizer
 	eventListeners []EventListener
-	db             *badgerhold.Store
+	db             *storm.DB
 
 	// addVoteLock is used to avoid Transaction Conflicts on the KV database.
 	// It is not critical and the code should be able to recover from a Conflict, but we
 	// try to minimize this situations in order to improve performance on the KV.
 	// TODO (pau): remove this mutex and relay on the KV layer
 	addVoteLock sync.RWMutex
-	//indexTxLock is used to avoid Transaction Conflicts on the vote index KV database.
+	// indexTxLock is used to avoid Transaction Conflicts on the vote index KV database.
 	indexTxLock sync.RWMutex
 	// recoveryBootLock prevents Commit() to add new votes while the recovery bootstratp is
 	// being executed.
@@ -116,14 +117,13 @@ func (s *Scrutinizer) AfterSyncBootstrap() {
 	// they are considered live so we need to compute the temporary
 	// results (or only its weight in case of Encrypted)
 	prcs := [][]byte{}
-	err := s.db.ForEach(
-		badgerhold.Where("FinalResults").Eq(false),
-		func(p *Process) error {
-			prcs = append(prcs, p.ID)
-			return nil
-		})
-	if err != nil {
+	liveProcesses := []Process{}
+	if err := s.db.Select(q.Eq("FinalResults", false)).Find(&liveProcesses); err != nil {
 		log.Error(err)
+		return
+	}
+	for _, p := range liveProcesses {
+		prcs = append(prcs, p.ID)
 	}
 	log.Infof("recovered %d live results processes", len(prcs))
 	log.Infof("starting live results recovery computation")
@@ -139,7 +139,7 @@ func (s *Scrutinizer) AfterSyncBootstrap() {
 			continue
 		}
 		options := process.GetVoteOptions()
-		if err := s.db.Upsert(p, &Results{
+		if err := s.db.Update(&Results{
 			ProcessID: p,
 			// MaxValue requires +1 since 0 is also an option
 			Votes:        newEmptyVotes(int(options.MaxCount), int(options.MaxValue)+1),
@@ -148,7 +148,7 @@ func (s *Scrutinizer) AfterSyncBootstrap() {
 			EnvelopeType: process.GetEnvelopeType(),
 			Signatures:   []types.HexBytes{},
 		}); err != nil {
-			log.Errorf("cannot upsert results to db: %v", err)
+			log.Errorf("cannot update results to db: %v", err)
 			continue
 		}
 
@@ -213,46 +213,30 @@ func (s *Scrutinizer) Commit(height uint32) error {
 	}
 
 	startTime := time.Now()
-	txn := s.db.Badger().NewTransaction(true)
+	tx, err := s.db.Begin(true)
+	if err != nil {
+		log.Fatal(err)
+	}
 	for _, v := range s.voteIndexPool {
 		// TODO: This should perform a single db Tx
 		if err := s.addVoteIndex(v.vote.Nullifier,
 			v.vote.ProcessId,
 			height,
 			v.vote.Weight,
-			v.txIndex, txn); err != nil {
+			v.txIndex, tx); err != nil {
 			log.Warn(err)
 		}
 	}
-	log.Infof("badgerhold took %s", time.Since(startTime))
+	log.Infof("storm database took %s", time.Since(startTime))
 	if len(s.voteIndexPool) > 0 {
 		s.indexTxLock.Lock()
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		txn.CommitWith(func(err error) {
-			if err != nil {
-				log.Error(err)
-			}
-			wg.Done()
-		})
-		wg.Wait()
-		txn.Discard()
+		if err := tx.Commit(); err != nil {
+			log.Error(err)
+		} else {
+			log.Infof("indexed %d new envelopes, took %s",
+				len(s.voteIndexPool), time.Since(startTime))
+		}
 		s.indexTxLock.Unlock()
-		/*		for {
-					if err := txn.Commit(); err != nil {
-						if strings.Contains(err.Error(), kvErrorStringForRetry) {
-							time.Sleep(time.Millisecond * 5)
-							continue
-						}
-						log.Error(err)
-						break
-					}
-					txn.Discard()
-					break
-				}
-		*/
-		log.Infof("indexed %d new envelopes, took %s",
-			len(s.voteIndexPool), time.Since(startTime))
 	}
 
 	// Check if there are processes that need results computing

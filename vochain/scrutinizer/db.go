@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"path"
 	"sync"
 	"time"
 
-	"github.com/timshannon/badgerhold/v3"
+	"github.com/asdine/storm/codec/gob"
+	storm "github.com/asdine/storm/v3"
 	"go.vocdoni.io/dvote/types"
 	"go.vocdoni.io/proto/build/go/models"
 )
@@ -18,16 +20,16 @@ import (
 // The scrutinizer Process data type is different from the vochain state data type
 // since it is optimized for querying purposes and not for keeping a shared consensus state.
 type Process struct {
-	ID            types.HexBytes             `badgerholdKey:"ID" json:"processId"`
-	EntityID      types.HexBytes             `badgerholdIndex:"EntityID" json:"entityId"`
+	ID            types.HexBytes             `storm:"id" json:"processId"`
+	EntityID      types.HexBytes             `storm:"index" json:"entityId"`
 	StartBlock    uint32                     `json:"startBlock"`
-	EndBlock      uint32                     `badgerholdIndex:"EndBlock" json:"endBlock"`
-	Rheight       uint32                     `badgerholdIndex:"Rheight" json:"-"`
+	EndBlock      uint32                     `storm:"index" json:"endBlock"`
+	Rheight       uint32                     `storm:"index" json:"-"`
 	CensusRoot    types.HexBytes             `json:"censusRoot"`
 	CensusURI     string                     `json:"censusURI"`
 	CensusOrigin  int32                      `json:"censusOrigin"`
-	Status        int32                      `badgerholdIndex:"Status" json:"status"`
-	Namespace     uint32                     `badgerholdIndex:"Namespace" json:"namespace"`
+	Status        int32                      `storm:"index" json:"status"`
+	Namespace     uint32                     `storm:"index" json:"namespace"`
 	Envelope      *models.EnvelopeType       `json:"envelopeType"`
 	Mode          *models.ProcessMode        `json:"processMode"`
 	VoteOpts      *models.ProcessVoteOptions `json:"voteOptions"`
@@ -45,13 +47,13 @@ func (p Process) String() string {
 }
 
 type Entity struct {
-	ID           types.HexBytes `badgerholdKey:"ID"`
+	ID           types.HexBytes `storm:"id"`
 	CreationTime time.Time
 }
 
 type VoteReference struct {
-	Nullifier    types.HexBytes `badgerhold:"key"`
-	ProcessID    types.HexBytes `badgerhold:"index"`
+	Nullifier    types.HexBytes `storm:"id"`
+	ProcessID    types.HexBytes //`storm:"index"`
 	Height       uint32
 	Weight       *big.Int
 	TxIndex      int32
@@ -59,7 +61,7 @@ type VoteReference struct {
 }
 
 type Results struct {
-	ProcessID    types.HexBytes `badgerholdKey:"ProcessID"`
+	ProcessID    types.HexBytes `storm:"id"`
 	Votes        [][]*big.Int
 	Weight       *big.Int
 	EnvelopeType *models.EnvelopeType       `json:"envelopeType"`
@@ -150,15 +152,6 @@ func (r *Results) AddVote(voteValues []int, weight *big.Int, mutex *sync.Mutex) 
 	return nil
 }
 
-func InitDB(dataDir string) (*badgerhold.Store, error) {
-	opts := badgerhold.DefaultOptions
-	opts.WithCompression(0)
-	opts.WithBlockCacheSize(0)
-	opts.SequenceBandwith = 10000
-	opts.WithVerifyValueChecksum(false)
-	opts.WithDetectConflicts(true)
-	opts.Dir = dataDir
-	opts.ValueDir = dataDir
-	// TO-DO set custom logger
-	return badgerhold.Open(opts)
+func InitDB(dataDir string) (*storm.DB, error) {
+	return storm.Open(path.Join(dataDir, "indexer.bbolt"), storm.Codec(gob.Codec), storm.Batch())
 }

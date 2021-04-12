@@ -15,10 +15,14 @@ import (
 func BenchmarkCheckTx(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			benchmarkIndexTx(b)
-		}
+	/*	b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				benchmarkIndexTx(b)
+			}
+		})
+	*/
+	b.Run("indexTx", func(b *testing.B) {
+		benchmarkIndexTx(b)
 	})
 }
 
@@ -35,6 +39,7 @@ func benchmarkIndexTx(b *testing.B) {
 	pid := util.RandomBytes(32)
 	if err := app.State.AddProcess(&models.Process{
 		ProcessId:    pid,
+		EntityId:     util.RandomBytes(20),
 		EnvelopeType: &models.EnvelopeType{EncryptedVotes: false},
 		Status:       models.ProcessStatus_READY,
 		BlockCount:   100000000,
@@ -50,7 +55,7 @@ func benchmarkIndexTx(b *testing.B) {
 	err = s.Generate()
 	qt.Assert(b, err, qt.IsNil)
 
-	for i := uint32(0); i < 5; i++ {
+	for i := uint32(0); i < 200; i++ {
 		sc.Rollback()
 		for j := int32(0); j < 2000; j++ {
 			vote := &models.Vote{
@@ -60,7 +65,6 @@ func benchmarkIndexTx(b *testing.B) {
 				VotePackage: []byte("{[\"1\",\"2\",\"3\"]}"),
 				Weight:      new(big.Int).SetUint64(uint64(util.RandomInt(1, 10000))).Bytes(),
 			}
-
 			sc.OnVote(vote, j)
 		}
 		err := sc.Commit(i)

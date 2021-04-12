@@ -8,10 +8,12 @@ go 1.16
 require (
 	git.sr.ht/~sircmpwn/go-bare v0.0.0-20210227202403-5dae5c48f917
 	github.com/arnaucube/go-blindsecp256k1 v0.0.0-20210203222605-876755a714c3
+	github.com/asdine/storm v2.1.2+incompatible
+	github.com/asdine/storm/v3 v3.2.1
 	github.com/cosmos/iavl v0.15.3
 	github.com/deroproject/graviton v0.0.0-20200906044921-89e9e09f9601
 	github.com/dgraph-io/badger/v2 v2.2007.2
-	github.com/dgraph-io/badger/v3 v3.2011.1
+	github.com/dgraph-io/ristretto v0.0.4-0.20210122082011-bb5d392ed82d // indirect
 	github.com/ethereum/go-ethereum v1.9.26-0.20201212163632-00d10e610f9f
 	github.com/frankban/quicktest v1.11.3
 	github.com/google/go-cmp v0.5.4
@@ -41,7 +43,6 @@ require (
 	github.com/spf13/viper v1.7.1
 	github.com/tendermint/tendermint v0.34.8
 	github.com/tendermint/tm-db v0.6.4
-	github.com/timshannon/badgerhold/v3 v3.0.0-20210208141506-eb78b03f8097
 	github.com/vocdoni/blind-ca v0.1.4
 	github.com/vocdoni/multirpc v0.1.21
 	github.com/vocdoni/storage-proofs-eth-go v0.1.5
