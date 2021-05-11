@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.vocdoni.io/dvote/types"
+	"go.vocdoni.io/dvote/vochain"
 	"go.vocdoni.io/dvote/vochain/scrutinizer/indexertypes"
 	"go.vocdoni.io/proto/build/go/models"
 )
@@ -58,36 +59,37 @@ type RequestMessage struct {
 // MetaRequest contains all of the possible request fields.
 // Fields must be in alphabetical order
 type MetaRequest struct {
-	CensusID     string         `json:"censusId,omitempty"`
-	CensusURI    string         `json:"censusUri,omitempty"`
-	CensusKey    []byte         `json:"censusKey,omitempty"`
-	CensusKeys   [][]byte       `json:"censusKeys,omitempty"`
-	CensusValue  []byte         `json:"censusValue,omitempty"`
-	CensusValues [][]byte       `json:"censusValues,omitempty"`
-	CensusDump   []byte         `json:"censusDump,omitempty"`
-	Content      []byte         `json:"content,omitempty"`
-	Digested     bool           `json:"digested,omitempty"`
-	EntityId     types.HexBytes `json:"entityId,omitempty"`
-	Height       uint32         `json:"height,omitempty"`
-	From         int            `json:"from,omitempty"`
-	ListSize     int            `json:"listSize,omitempty"`
-	Method       string         `json:"method"`
-	Name         string         `json:"name,omitempty"`
-	Namespace    uint32         `json:"namespace,omitempty"`
-	Nullifier    types.HexBytes `json:"nullifier,omitempty"`
-	Payload      []byte         `json:"payload,omitempty"`
-	ProcessID    types.HexBytes `json:"processId,omitempty"`
-	ProofData    types.HexBytes `json:"proofData,omitempty"`
-	PubKeys      []string       `json:"pubKeys,omitempty"`
-	RootHash     types.HexBytes `json:"rootHash,omitempty"`
-	SearchTerm   string         `json:"searchTerm,omitempty"`
-	Signature    types.HexBytes `json:"signature,omitempty"`
-	Status       string         `json:"status,omitempty"`
-	Timestamp    int32          `json:"timestamp"`
-	TxIndex      int32          `json:"txIndex,omitempty"`
-	Type         string         `json:"type,omitempty"`
-	URI          string         `json:"uri,omitempty"`
-	WithResults  bool           `json:"withResults,omitempty"`
+	CensusID     string              `json:"censusId,omitempty"`
+	CensusURI    string              `json:"censusUri,omitempty"`
+	CensusKey    []byte              `json:"censusKey,omitempty"`
+	CensusKeys   [][]byte            `json:"censusKeys,omitempty"`
+	CensusValue  []byte              `json:"censusValue,omitempty"`
+	CensusValues [][]byte            `json:"censusValues,omitempty"`
+	CensusDump   []byte              `json:"censusDump,omitempty"`
+	Content      []byte              `json:"content,omitempty"`
+	Digested     bool                `json:"digested,omitempty"`
+	EntityId     types.HexBytes      `json:"entityId,omitempty"`
+	Height       uint32              `json:"height,omitempty"`
+	From         int                 `json:"from,omitempty"`
+	ListSize     int                 `json:"listSize,omitempty"`
+	Method       string              `json:"method"`
+	Name         string              `json:"name,omitempty"`
+	Namespace    uint32              `json:"namespace,omitempty"`
+	NewProcess   *vochain.NewProcess `json:"newProcess,omitempty"`
+	Nullifier    types.HexBytes      `json:"nullifier,omitempty"`
+	Payload      []byte              `json:"payload,omitempty"`
+	ProcessID    types.HexBytes      `json:"processId,omitempty"`
+	ProofData    types.HexBytes      `json:"proofData,omitempty"`
+	PubKeys      []string            `json:"pubKeys,omitempty"`
+	RootHash     types.HexBytes      `json:"rootHash,omitempty"`
+	SearchTerm   string              `json:"searchTerm,omitempty"`
+	Signature    types.HexBytes      `json:"signature,omitempty"`
+	Status       string              `json:"status,omitempty"`
+	Timestamp    int32               `json:"timestamp"`
+	TxIndex      int32               `json:"txIndex,omitempty"`
+	Type         string              `json:"type,omitempty"`
+	URI          string              `json:"uri,omitempty"`
+	WithResults  bool                `json:"withResults,omitempty"`
 }
 
 func (r MetaRequest) String() string {

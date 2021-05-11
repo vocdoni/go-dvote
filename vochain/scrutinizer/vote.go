@@ -17,7 +17,6 @@ import (
 	"go.vocdoni.io/dvote/crypto/nacl"
 	"go.vocdoni.io/dvote/log"
 	"go.vocdoni.io/dvote/types"
-	"go.vocdoni.io/dvote/vochain"
 	"go.vocdoni.io/dvote/vochain/scrutinizer/indexertypes"
 )
 
@@ -285,12 +284,12 @@ func (s *Scrutinizer) GetResultsWeight(processID []byte) (*big.Int, error) {
 }
 
 // unmarshalVote decodes the base64 payload to a VotePackage struct type.
-// If the vochain.VotePackage is encrypted the list of keys to decrypt it should be provided.
+// If the types.VotePackage is encrypted the list of keys to decrypt it should be provided.
 // The order of the Keys must be as it was encrypted.
 // The function will reverse the order and use the decryption keys starting from the
 // last one provided.
-func unmarshalVote(VotePackage []byte, keys []string) (*vochain.VotePackage, error) {
-	var vote vochain.VotePackage
+func unmarshalVote(VotePackage []byte, keys []string) (*indexertypes.VotePackage, error) {
+	var vote indexertypes.VotePackage
 	rawVote := make([]byte, len(VotePackage))
 	copy(rawVote, VotePackage)
 	// if encryption keys, decrypt the vote
@@ -317,7 +316,7 @@ func unmarshalVote(VotePackage []byte, keys []string) (*vochain.VotePackage, err
 func (s *Scrutinizer) addLiveVote(pid []byte, VotePackage []byte, weight *big.Int,
 	results *indexertypes.Results) error {
 	// If live process, add vote to temporary results
-	var vote *vochain.VotePackage
+	var vote *indexertypes.VotePackage
 	if open, err := s.isOpenProcess(pid); open && err == nil {
 		vote, err = unmarshalVote(VotePackage, []string{})
 		if err != nil {
@@ -456,7 +455,7 @@ func (s *Scrutinizer) computeFinalResults(p *indexertypes.Process) (*indexertype
 
 	if err = s.WalkEnvelopes(p.ID, true, func(vote *models.VoteEnvelope,
 		weight *big.Int) {
-		var vp *vochain.VotePackage
+		var vp *indexertypes.VotePackage
 		var err error
 		if p.Envelope.GetEncryptedVotes() {
 			if len(p.PrivateKeys) < len(vote.GetEncryptionKeyIndexes()) {

@@ -26,13 +26,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethclient"
 	"go.vocdoni.io/dvote/chain"
+	"go.vocdoni.io/dvote/chain/ethereumhandler"
 	"go.vocdoni.io/dvote/log"
 )
 
 // EthereumEvents type is used to monitorize Ethereum smart contracts and call custom EventHandler functions
 type EthereumEvents struct {
 	// contracts handle
-	VotingHandle *chain.VotingHandle
+	VotingHandle *ethereumhandler.EthereumHandler
 	// dial web3 address
 	DialAddr string
 	// list of handler functions that will be called on events
@@ -54,7 +55,7 @@ type EthereumEvents struct {
 	// ContractsAddress
 	ContractsAddress []common.Address
 	// ContractsInfo holds useful info for working with the desired contracts
-	ContractsInfo map[string]*chain.EthereumContract
+	ContractsInfo map[string]*ethereumhandler.EthereumContract
 }
 
 type logEvent struct {
@@ -91,7 +92,7 @@ type EventProcessor struct {
 
 // NewEthEvents creates a new Ethereum events handler
 func NewEthEvents(
-	contracts map[string]*chain.EthereumContract,
+	contracts map[string]*ethereumhandler.EthereumContract,
 	signer *ethereum.SignKeys,
 	w3Endpoint string,
 	cens *census.Manager,
@@ -103,7 +104,7 @@ func NewEthEvents(
 	if len(w3Endpoint) == 0 {
 		return nil, fmt.Errorf("no w3Endpoint specified on Ethereum Events")
 	}
-	ph, err := chain.NewVotingHandle(contracts, w3Endpoint)
+	ph, err := ethereumhandler.NewEthereumHandler(contracts, w3Endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create voting handle: %w", err)
 	}

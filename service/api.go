@@ -10,6 +10,8 @@ import (
 	"go.vocdoni.io/dvote/data"
 	"go.vocdoni.io/dvote/log"
 	"go.vocdoni.io/dvote/metrics"
+	"go.vocdoni.io/dvote/oracle"
+	"go.vocdoni.io/dvote/oracle/apioracle"
 
 	"go.vocdoni.io/dvote/multirpc/transports"
 	"go.vocdoni.io/dvote/multirpc/transports/mhttp"
@@ -77,6 +79,15 @@ func API(apiconfig *config.API, pxy *mhttp.Proxy, storage data.Storage, cm *cens
 			routerAPI.EnableIndexerAPI(vapp, vi)
 		}
 	}
+	if apiconfig.Oracle {
+		// todo: client params as cli flags
+		log.Info("enabling oracle API")
+		if _, err := apioracle.NewAPIoracle(oracle.NewOracle(vapp, signer),
+			routerAPI, "goerli", "wss://goerli.vocdoni.net/wss"); err != nil {
+			return err
+		}
+	}
+
 	go routerAPI.Route()
 
 	go func() {

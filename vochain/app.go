@@ -376,22 +376,18 @@ func (app *BaseApplication) EndBlock(req abcitypes.RequestEndBlock) abcitypes.Re
 	atomic.StoreInt64(app.timestamp, time.Now().Unix())
 	return abcitypes.ResponseEndBlock{}
 }
-
 func (app *BaseApplication) ApplySnapshotChunk(
 	req abcitypes.RequestApplySnapshotChunk) abcitypes.ResponseApplySnapshotChunk {
 	return abcitypes.ResponseApplySnapshotChunk{}
 }
-
 func (app *BaseApplication) ListSnapshots(
 	req abcitypes.RequestListSnapshots) abcitypes.ResponseListSnapshots {
 	return abcitypes.ResponseListSnapshots{}
 }
-
 func (app *BaseApplication) LoadSnapshotChunk(
 	req abcitypes.RequestLoadSnapshotChunk) abcitypes.ResponseLoadSnapshotChunk {
 	return abcitypes.ResponseLoadSnapshotChunk{}
 }
-
 func (app *BaseApplication) OfferSnapshot(
 	req abcitypes.RequestOfferSnapshot) abcitypes.ResponseOfferSnapshot {
 	return abcitypes.ResponseOfferSnapshot{}

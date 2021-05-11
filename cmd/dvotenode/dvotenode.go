@@ -69,6 +69,7 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	globalCfg.API.File = *flag.Bool("fileApi", true, "enable the file API")
 	globalCfg.API.Census = *flag.Bool("censusApi", false, "enable the census API")
 	globalCfg.API.Vote = *flag.Bool("voteApi", true, "enable the vote API")
+	globalCfg.API.Oracle = *flag.Bool("oracleApi", true, "enable the oracle API (node must be an oracle)")
 	globalCfg.API.Tendermint = *flag.Bool("tendermintApi", false, "make the Tendermint API public available")
 	globalCfg.API.Results = *flag.Bool("resultsApi", true, "enable the results API")
 	globalCfg.API.Indexer = *flag.Bool("indexerApi", false, "enable the indexer API (required for explorer)")

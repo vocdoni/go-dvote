@@ -72,6 +72,7 @@ type API struct {
 	File       bool
 	Census     bool
 	Tendermint bool
+	Oracle     bool
 	Vote       bool
 	Results    bool
 	Indexer    bool
