@@ -26,13 +26,11 @@ import (
 	models "go.vocdoni.io/proto/build/go/models"
 )
 
-const ensRegistryName = "ensRegistry"
-
 // The following methods and structures represent an exportable abstraction
 // over raw contract bindings.
 // Use these methods, rather than those present in the contracts folder
 
-// EthereumHandler wraps the Processes, Namespace and TokenStorageProof
+// EthereumHandler wraps the vocdoni smartcontracts
 // contracts and holds a reference to an ethereum client
 type EthereumHandler struct {
 	VotingProcess     *contracts.Processes
@@ -40,6 +38,9 @@ type EthereumHandler struct {
 	TokenStorageProof *contracts.TokenStorageProof
 	Genesis           *contracts.Genesis
 	Results           *contracts.Results
+	EntityResolver    *contracts.EntityResolver
+	ENSPublicRegistry *contracts.EnsRegistryWithFallback
+	ENSPublicResolver *contracts.EntityResolver
 	EthereumClient    *ethclient.Client
 	EthereumRPC       *ethrpc.Client
 	Endpoint          string
@@ -64,6 +65,7 @@ type EthSyncInfo struct {
 // NewEthereumHandler initializes contracts creating a transactor using the ethereum client
 func NewEthereumHandler(contracts map[string]*EthereumContract, srcNetworkId models.SourceNetworkId,
 	dialEndpoint string) (*EthereumHandler, error) {
+	log.Infof("Using ENS Registry at address: %s", contracts[ENSregistryContractName].Address.Hex())
 	eh := &EthereumHandler{SrcNetworkId: srcNetworkId}
 	if err := eh.Connect(dialEndpoint); err != nil {
 		return nil, err
@@ -71,12 +73,7 @@ func NewEthereumHandler(contracts map[string]*EthereumContract, srcNetworkId mod
 	ctx, cancel := context.WithTimeout(context.Background(), types.EthereumReadTimeout)
 	defer cancel()
 	for name, contract := range contracts {
-		// avoid resolve registry contract, this is the entry point for the ENS
-		// and does not have a domain name
-		if name == ensRegistryName {
-			continue
-		}
-		if err := contract.InitContract(ctx, name, contracts["ensRegistry"].Address, eh.EthereumClient); err != nil {
+		if err := contract.InitContract(ctx, name, contracts[ENSregistryContractName].Address, eh.EthereumClient); err != nil {
 			return eh, fmt.Errorf("cannot initialize contracts: %w", err)
 		}
 		if err := eh.SetContractInstance(contract); err != nil {
@@ -204,6 +201,18 @@ func (eh *EthereumHandler) SetContractInstance(ec *EthereumContract) error {
 		}
 	case strings.HasPrefix(ec.Domain, "results"):
 		if eh.Results, err = contracts.NewResults(ec.Address, eh.EthereumClient); err != nil {
+			return fmt.Errorf("error constructing results contract transactor: %w", err)
+		}
+	case strings.HasPrefix(ec.Domain, "entities"):
+		if eh.EntityResolver, err = contracts.NewEntityResolver(ec.Address, eh.EthereumClient); err != nil {
+			return fmt.Errorf("error constructing results contract transactor: %w", err)
+		}
+	case strings.HasPrefix(ec.Domain, ENSresolverContractName):
+		if eh.ENSPublicResolver, err = contracts.NewEntityResolver(ec.Address, eh.EthereumClient); err != nil {
+			return fmt.Errorf("error constructing results contract transactor: %w", err)
+		}
+	case strings.HasPrefix(ec.Domain, ENSregistryContractName):
+		if eh.ENSPublicRegistry, err = contracts.NewEnsRegistryWithFallback(ec.Address, eh.EthereumClient); err != nil {
 			return fmt.Errorf("error constructing results contract transactor: %w", err)
 		}
 	}
