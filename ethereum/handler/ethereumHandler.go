@@ -26,13 +26,13 @@ import (
 	models "go.vocdoni.io/proto/build/go/models"
 )
 
-const ensRegistryName = "ensRegistry"
+const ENSregistryName = "ensRegistry"
 
 // The following methods and structures represent an exportable abstraction
 // over raw contract bindings.
 // Use these methods, rather than those present in the contracts folder
 
-// EthereumHandler wraps the Processes, Namespace and TokenStorageProof
+// EthereumHandler wraps the vocdoni smartcontracts
 // contracts and holds a reference to an ethereum client
 type EthereumHandler struct {
 	VotingProcess     *contracts.Processes
@@ -63,6 +63,7 @@ type EthSyncInfo struct {
 // NewEthereumHandler initializes contracts creating a transactor using the ethereum client
 func NewEthereumHandler(contracts map[string]*EthereumContract,
 	dialEndpoint string) (*EthereumHandler, error) {
+	log.Infof("Using ENS Registry at address: %s", contracts[ENSregistryName].Address.Hex())
 	eh := new(EthereumHandler)
 	if err := eh.Connect(dialEndpoint); err != nil {
 		return nil, err
@@ -72,10 +73,10 @@ func NewEthereumHandler(contracts map[string]*EthereumContract,
 	for name, contract := range contracts {
 		// avoid resolve registry contract, this is the entry point for the ENS
 		// and does not have a domain name
-		if name == ensRegistryName {
+		if name == ENSregistryName {
 			continue
 		}
-		if err := contract.InitContract(ctx, name, contracts["ensRegistry"].Address, eh.EthereumClient); err != nil {
+		if err := contract.InitContract(ctx, name, contracts[ENSregistryName].Address, eh.EthereumClient); err != nil {
 			return eh, fmt.Errorf("cannot initialize contracts: %w", err)
 		}
 		if err := eh.SetContractInstance(contract); err != nil {
