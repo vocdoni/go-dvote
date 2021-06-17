@@ -5,12 +5,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/cosmos/iavl"
 	"github.com/ethereum/go-ethereum/common"
 	lru "github.com/hashicorp/golang-lru"
 	tmcrypto "github.com/tendermint/tendermint/crypto"
@@ -85,28 +83,9 @@ func NewState(dataDir string) (*State, error) {
 	// Must be -1 in order to get the last committed block state, if not block replay will fail
 	log.Infof("loading last safe state db version, this could take a while...")
 	if err = vs.Store.LoadVersion(-1); err != nil {
-		if err == iavl.ErrVersionDoesNotExist {
-			// restart data db
-			log.Warnf("no db version available: %s, restarting vochain database", err)
-			if err := os.RemoveAll(dataDir); err != nil {
-				return nil, fmt.Errorf("cannot remove dataDir %w", err)
-			}
-			_ = vs.Store.Close()
-			if err := initStore(dataDir, vs); err != nil {
-				return nil, fmt.Errorf("cannot init db: %w", err)
-			}
-			vs.voteCache, err = lru.New(voteCacheSize)
-			if err != nil {
-				return nil, err
-			}
-			log.Infof("application trees successfully loaded at version %d", vs.Store.Version())
-			return vs, nil
-		}
-		return nil, fmt.Errorf("unknown error loading state db: %w", err)
+		return nil, fmt.Errorf("error loading state db version -1: %w", err)
 	}
-
-	vs.voteCache, err = lru.New(voteCacheSize)
-	if err != nil {
+	if vs.voteCache, err = lru.New(voteCacheSize); err != nil {
 		return nil, err
 	}
 	log.Infof("state database is ready at version %d with hash %x",

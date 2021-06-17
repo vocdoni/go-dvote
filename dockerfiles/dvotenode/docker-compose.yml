@@ -3,7 +3,7 @@ services:
   dvotenode:
     build:
       context: ../../
-    image: "ghcr.io/vocdoni/go-dvote:master"
+    image: "ghcr.io/vocdoni/go-dvote:release-1.1"
     env_file: env
     volumes:
       - "run:/app/run"
@@ -23,7 +23,7 @@ services:
       - "61000-61100:61000-61100"
     sysctls:
       net.core.somaxconn: 8128
-    restart: ${RESTART:-no}
+    restart: ${RESTART:-unless-stopped}
     logging:
       driver: json-file
       options:

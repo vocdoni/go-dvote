@@ -59,7 +59,7 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	// global
 	flag.StringVarP(&globalCfg.DataDir, "dataDir", "d", home+"/.dvote",
 		"directory where data is stored")
-	flag.StringVarP(&globalCfg.VochainConfig.Chain, "vochain", "v", "dev",
+	flag.StringVarP(&globalCfg.VochainConfig.Chain, "vochain", "v", "main",
 		"vocdoni blockchain network to connect with")
 	flag.BoolVar(&globalCfg.Dev, "dev", false,
 		"use developer mode (less security)")
@@ -108,7 +108,7 @@ func newConfig() (*config.DvoteCfg, config.Error) {
 	globalCfg.EthEventConfig.SubscribeOnly = *flag.Bool("ethSubscribeOnly", true,
 		"only subscribe to new ethereum events (do not read past log)")
 	// ethereum web3
-	globalCfg.W3Config.ChainType = *flag.StringP("ethChain", "c", "goerli",
+	globalCfg.W3Config.ChainType = *flag.StringP("ethChain", "c", "xdai",
 		fmt.Sprintf("Ethereum blockchain to use: %s", ethchain.AvailableChains))
 	globalCfg.W3Config.W3External = *flag.StringP("w3External", "w", "",
 		"ethereum web3 endpoint. Supported protocols: http(s)://, ws(s):// and IPC filepath")
