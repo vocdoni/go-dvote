@@ -24,6 +24,7 @@ require (
 	github.com/google/go-cmp v0.5.5
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hashicorp/hcl v1.0.1-0.20180906183839-65a6292f0157 // indirect
+	github.com/iden3/go-iden3-crypto v0.0.6-0.20210308142348-8f85683b2cef // indirect
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-ipfs v0.7.1-0.20210129042248-884a5aebd748
 	github.com/ipfs/go-ipfs-config v0.12.0
@@ -49,10 +50,10 @@ require (
 	github.com/tendermint/tm-db v0.6.4
 	github.com/timshannon/badgerhold/v3 v3.0.0-20210415132401-e7c90fb5919f
 	github.com/vocdoni/arbo v0.0.0-20210616072504-a8c7ea980892
-	github.com/vocdoni/go-external-ip v0.0.0-20210705122950-fae6195a1d44 // indirect
+	github.com/vocdoni/go-external-ip v0.0.0-20210705122950-fae6195a1d44
 	github.com/vocdoni/storage-proofs-eth-go v0.1.5
 	go.uber.org/zap v1.16.0
-	go.vocdoni.io/proto v1.0.4-0.20210705131333-7925ca319268 // indirect
+	go.vocdoni.io/proto v1.0.4-0.20210707205118-f3185993cfc8
 	golang.org/x/crypto v0.0.0-20210317152858-513c2a44f670
 	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
 	google.golang.org/protobuf v1.25.0

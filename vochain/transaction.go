@@ -15,7 +15,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// AddTx check the validity of a transaction and adds it to the state if commit=true
+// AddTx check the validity of a transaction and adds it to the state if commit=true.
+// It returns a bytes value which depends on the transaction type:
+//  Tx_Vote: vote nullifier
+//  default: []byte{}
 func AddTx(vtx *models.Tx, txBytes, signature []byte, state *State,
 	txID [32]byte, commit bool) ([]byte, error) {
 	if vtx == nil || state == nil || vtx.Payload == nil {
@@ -105,6 +108,15 @@ func AddTx(vtx *models.Tx, txBytes, signature []byte, state *State,
 			default:
 				return []byte{}, fmt.Errorf("unknown set process tx type")
 			}
+		}
+
+	case *models.Tx_RegisterKey:
+		if err := RegisterKeyTxCheck(vtx, txBytes, signature, state); err != nil {
+			return []byte{}, fmt.Errorf("registerKeyTx %w", err)
+		}
+		if commit {
+			tx := vtx.GetRegisterKey()
+			return []byte{}, state.AddToRollingCensus(tx.ProcessId, tx.NewKey, new(big.Int).SetBytes(tx.Weight))
 		}
 
 	default:
