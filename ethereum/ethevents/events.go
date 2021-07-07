@@ -224,18 +224,18 @@ func (ev *EthereumEvents) SubscribeEthereumEventLogs(ctx context.Context) {
 	for {
 		select {
 		case <-sub.Err():
-			ev.EventProcessor.eventProcessorRunning = false
-			ev.VotingHandle = nil
 			log.Warn("ethereum events subscription error on channel")
 			log.Infof("restarting ethereum events subscription with web3: %+v", ev.DialAddrs)
+			ev.EventProcessor.eventProcessorRunning = false
+			ev.VotingHandle = nil
 			return
 		case event := <-logs:
 			ev.EventProcessor.Events <- event
 		case <-connFailure:
-			ev.EventProcessor.eventProcessorRunning = false
-			ev.VotingHandle = nil
 			log.Warn("ethereum events subscription error on channel")
 			log.Infof("restarting ethereum events subscription with web3: %+v", ev.DialAddrs)
+			ev.EventProcessor.eventProcessorRunning = false
+			ev.VotingHandle = nil
 			return
 		}
 	}
