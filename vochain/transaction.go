@@ -6,9 +6,11 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/go-snark/verifier"
 	ethtoken "github.com/vocdoni/storage-proofs-eth-go/token"
 	"go.vocdoni.io/dvote/crypto/ethereum"
 	"go.vocdoni.io/dvote/crypto/nacl"
+	"go.vocdoni.io/dvote/crypto/snark"
 	"go.vocdoni.io/dvote/log"
 	"go.vocdoni.io/dvote/types"
 	models "go.vocdoni.io/proto/build/go/models"
@@ -23,7 +25,8 @@ func AddTx(vtx *models.Tx, txBytes, signature []byte, state *State,
 	}
 	switch vtx.Payload.(type) {
 	case *models.Tx_Vote:
-		v, err := VoteTxCheck(vtx, txBytes, signature, state, txID, commit)
+		txVote := vtx.GetVote()
+		v, err := VoteTxCheck(txVote, txBytes, signature, state, txID, commit)
 		if err != nil || v == nil {
 			return []byte{}, fmt.Errorf("voteTxCheck %w", err)
 		}
@@ -127,30 +130,29 @@ func UnmarshalTx(content []byte) (*models.Tx, []byte, []byte, error) {
 
 // VoteTxCheck is an abstraction of ABCI checkTx for submitting a vote
 // All hexadecimal strings should be already sanitized (without 0x)
-func VoteTxCheck(vtx *models.Tx, txBytes, signature []byte, state *State,
+func VoteTxCheck(ve *models.VoteEnvelope, txBytes, signature []byte, state *State,
 	txID [32]byte, forCommit bool) (*models.Vote, error) {
-	tx := vtx.GetVote()
 
 	// Perform basic/general checks
-	if tx == nil {
+	if ve == nil {
 		return nil, fmt.Errorf("vote envelope transaction is nil")
 	}
-	process, err := state.Process(tx.ProcessId, false)
+	process, err := state.Process(ve.ProcessId, false)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch processId: %w", err)
 	}
 	if process == nil || process.EnvelopeType == nil || process.Mode == nil {
-		return nil, fmt.Errorf("process %x malformed", tx.ProcessId)
+		return nil, fmt.Errorf("process %x malformed", ve.ProcessId)
 	}
 	height := state.Height()
 	endBlock := process.StartBlock + process.BlockCount
 
 	if height < process.StartBlock || height > endBlock {
-		return nil, fmt.Errorf("process %x not started or finished", tx.ProcessId)
+		return nil, fmt.Errorf("process %x not started or finished", ve.ProcessId)
 	}
 
 	if process.Status != models.ProcessStatus_READY {
-		return nil, fmt.Errorf("process %x not in READY state", tx.ProcessId)
+		return nil, fmt.Errorf("process %x not in READY state", ve.ProcessId)
 	}
 
 	// Check in case of keys required, they have been sent by some keykeeper
@@ -160,11 +162,53 @@ func VoteTxCheck(vtx *models.Tx, txBytes, signature []byte, state *State,
 		return nil, fmt.Errorf("no keys available, voting is not possible")
 	}
 
+	// if EnvelopeType.EncryptedVotes: check that the vote is encrypted
+	// (includes at least one key index)
+
 	var vote *models.Vote
 	switch {
 	case process.EnvelopeType.Anonymous:
-		// TODO check snark
-		return nil, fmt.Errorf("snark vote not implemented")
+		// WIP we consider 1 circuit size for the moment (census size)
+		// Supports Groth16 proof generated from circom snark compatible
+		// prover
+		proofZkSNARK := ve.Proof.GetZkSnark()
+		if proofZkSNARK == nil {
+			return nil, fmt.Errorf("zkSNARK proof is empty")
+		}
+		proof, publicInputs, err := snark.ProtobufZKProofToCircomProof(proofZkSNARK)
+		if err != nil {
+			return nil, err
+		}
+
+		// TMP WIP TODO this will be done at node initialization
+		vk, err := snark.LoadVkFromFile("vk.json")
+		if err != nil {
+			return nil, err
+		}
+
+		// check zkSnark proof
+		if !verifier.Verify(vk, proof, publicInputs) {
+			return nil, fmt.Errorf("zkSNARK proof can not be verified")
+		}
+
+		// TODO the next 12 lines of code are the same than a little
+		// further down. TODO: maybe move them before the 'switch', as
+		// is a logic that must be done even if
+		// process.EnvelopeType.Anonymous==true or not
+		vote = &models.Vote{
+			Height:      height,
+			ProcessId:   ve.ProcessId,
+			VotePackage: ve.VotePackage,
+		}
+		// If process encrypted, check the vote is encrypted (includes at least one key index)
+		if process.EnvelopeType.EncryptedVotes {
+			if len(ve.EncryptionKeyIndexes) == 0 {
+				return nil, fmt.Errorf("no key indexes provided on vote package")
+			}
+			vote.EncryptionKeyIndexes = ve.EncryptionKeyIndexes
+		}
+
+		return vote, nil
 	default: // Signature based voting
 		if signature == nil {
 			return nil, fmt.Errorf("signature missing on voteTx")
@@ -199,21 +243,21 @@ func VoteTxCheck(vtx *models.Tx, txBytes, signature []byte, state *State,
 		// if not in cache, full check
 		// extract pubKey, generate nullifier and check census proof.
 		// add the transaction in the cache
-		if tx.Proof == nil {
+		if ve.Proof == nil {
 			return nil, fmt.Errorf("proof not found on transaction")
 		}
 
 		vote = &models.Vote{
 			Height:      height,
-			ProcessId:   tx.ProcessId,
-			VotePackage: tx.VotePackage,
+			ProcessId:   ve.ProcessId,
+			VotePackage: ve.VotePackage,
 		}
 		// If process encrypted, check the vote is encrypted (includes at least one key index)
 		if process.EnvelopeType.EncryptedVotes {
-			if len(tx.EncryptionKeyIndexes) == 0 {
+			if len(ve.EncryptionKeyIndexes) == 0 {
 				return nil, fmt.Errorf("no key indexes provided on vote package")
 			}
-			vote.EncryptionKeyIndexes = tx.EncryptionKeyIndexes
+			vote.EncryptionKeyIndexes = ve.EncryptionKeyIndexes
 		}
 		var pubKey []byte
 		pubKey, err = ethereum.PubKeyFromSignature(txBytes, signature)
@@ -242,7 +286,7 @@ func VoteTxCheck(vtx *models.Tx, txBytes, signature []byte, state *State,
 			}
 			return nil, fmt.Errorf("vote %x already exists", vote.Nullifier)
 		}
-		log.Debugf("new vote %x for address %s and process %x", vote.Nullifier, addr.Hex(), tx.ProcessId)
+		log.Debugf("new vote %x for address %s and process %x", vote.Nullifier, addr.Hex(), ve.ProcessId)
 
 		// check census origin and compute vote digest identifier
 		var pubKeyDigested []byte
@@ -278,7 +322,7 @@ func VoteTxCheck(vtx *models.Tx, txBytes, signature []byte, state *State,
 		// check census proof
 		var valid bool
 		var weight *big.Int
-		valid, weight, err = CheckProof(tx.Proof,
+		valid, weight, err = CheckProof(ve.Proof,
 			process.CensusOrigin,
 			process.CensusRoot,
 			process.ProcessId,

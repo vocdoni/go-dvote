@@ -1,0 +1,49 @@
+package vochain
+
+import (
+	"fmt"
+	"testing"
+
+	qt "github.com/frankban/quicktest"
+	models "go.vocdoni.io/proto/build/go/models"
+)
+
+func TestVoteTxCheckCaseZkSNARK(t *testing.T) {
+	state, err := NewState(t.TempDir())
+	qt.Assert(t, err, qt.IsNil)
+
+	protoProof := models.ProofZkSNARK{
+		A: []string{
+			"17569240301865190069940703408776620561950070507358357198130890464508555015742",
+			"14719281396036152924308513019111720587276284390020911371919541479835430607528",
+			"1",
+		},
+		B: []string{
+			"19366523330111704407267566338410994924319459949138724547828188860719056192113",
+			"3554431156699466263343064300468289853516840393068286815512868805374822045471",
+			"7069001739799325309551446576989712671469685847725867674777886436500905588451",
+			"9519609195825772265125524447464801412742967232326200600178197674408796399758",
+			"1",
+			"0",
+		},
+		C: []string{
+			"1803067082675811010286176187174786634523306099072027370858753233512049893073",
+			"12821812994233574817558778896965446058705557189286765124075749479926329638171",
+			"1",
+		},
+		PublicInputs: []string{"1", "2", "3"},
+	}
+
+	vtx := &models.VoteEnvelope{
+		Proof: protoProof,
+	}
+	signature := []byte{}
+	txBytes := []byte{}
+	txID := [32]byte{}
+	commit := false
+
+	v, err := VoteTxCheck(vtx, txBytes, signature, state, txID, commit)
+	qt.Assert(t, err, qt.IsNil)
+
+	fmt.Println(v)
+}

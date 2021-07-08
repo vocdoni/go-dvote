@@ -3,7 +3,9 @@ module go.vocdoni.io/dvote
 go 1.16
 
 // For testing purposes while dvote-protobuf becomes stable
-// replace go.vocdoni.io/proto => ../dvote-protobuf
+replace go.vocdoni.io/proto => ../dvote-protobuf
+
+replace github.com/vocdoni/go-snark => ../go-snark
 
 replace github.com/timshannon/badgerhold/v3 => github.com/vocdoni/badgerhold/v3 v3.0.0-20210514115050-2d704df3456f
 
@@ -49,13 +51,14 @@ require (
 	github.com/tendermint/tm-db v0.6.4
 	github.com/timshannon/badgerhold/v3 v3.0.0-20210415132401-e7c90fb5919f
 	github.com/vocdoni/arbo v0.0.0-20210616072504-a8c7ea980892
-	github.com/vocdoni/go-external-ip v0.0.0-20210705122950-fae6195a1d44 // indirect
+	github.com/vocdoni/go-external-ip v0.0.0-20210705122950-fae6195a1d44
+	github.com/vocdoni/go-snark v0.0.0-20210614184457-1c2a880c9322
 	github.com/vocdoni/storage-proofs-eth-go v0.1.5
 	go.uber.org/zap v1.16.0
-	go.vocdoni.io/proto v1.0.4-0.20210705131333-7925ca319268 // indirect
+	go.vocdoni.io/proto v1.0.4-0.20210705131333-7925ca319268
 	golang.org/x/crypto v0.0.0-20210317152858-513c2a44f670
 	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
-	google.golang.org/protobuf v1.25.0
+	google.golang.org/protobuf v1.27.1
 	nhooyr.io/websocket v1.8.6
 )
 
