@@ -147,7 +147,10 @@ func (v *State) AddOracle(address common.Address) error {
 	var err error
 	v.Lock()
 	defer v.Unlock()
-	oraclesBytes := v.Store.Tree(AppTree).Get(oracleKey)
+	oraclesBytes, err := v.Store.Tree(AppTree).Get(oracleKey)
+	if err != nil {
+		return err
+	}
 	var oracleList models.OracleList
 	if len(oraclesBytes) > 0 {
 		if err = proto.Unmarshal(oraclesBytes, &oracleList); err != nil {
@@ -173,7 +176,10 @@ func (v *State) AddOracle(address common.Address) error {
 func (v *State) RemoveOracle(address common.Address) error {
 	v.Lock()
 	defer v.Unlock()
-	oraclesBytes := v.Store.Tree(AppTree).Get(oracleKey)
+	oraclesBytes, err := v.Store.Tree(AppTree).Get(oracleKey)
+	if err != nil {
+		return err
+	}
 	var oracleList models.OracleList
 
 	if err := proto.Unmarshal(oraclesBytes, &oracleList); err != nil {
@@ -205,9 +211,15 @@ func (v *State) Oracles(isQuery bool) ([]common.Address, error) {
 	v.RLock()
 	defer v.RUnlock()
 	if isQuery {
-		oraclesBytes = v.Store.ImmutableTree(AppTree).Get(oracleKey)
+		oraclesBytes, err = v.Store.ImmutableTree(AppTree).Get(oracleKey)
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		oraclesBytes = v.Store.Tree(AppTree).Get(oracleKey)
+		oraclesBytes, err = v.Store.Tree(AppTree).Get(oracleKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var oracleList models.OracleList
 	if err = proto.Unmarshal(oraclesBytes, &oracleList); err != nil {
@@ -239,7 +251,10 @@ func (v *State) AddValidator(validator *models.Validator) error {
 	var err error
 	v.Lock()
 	defer v.Unlock()
-	validatorsBytes := v.Store.Tree(AppTree).Get(validatorKey)
+	validatorsBytes, err := v.Store.Tree(AppTree).Get(validatorKey)
+	if err != nil {
+		return err
+	}
 	var validatorsList models.ValidatorList
 	if len(validatorsBytes) > 0 {
 		if err = proto.Unmarshal(validatorsBytes, &validatorsList); err != nil {
@@ -267,7 +282,10 @@ func (v *State) AddValidator(validator *models.Validator) error {
 // RemoveValidator removes a tendermint validator identified by its address
 func (v *State) RemoveValidator(address []byte) error {
 	v.RLock()
-	validatorsBytes := v.Store.Tree(AppTree).Get(validatorKey)
+	validatorsBytes, err := v.Store.Tree(AppTree).Get(validatorKey)
+	if err != nil {
+		return err
+	}
 	v.RUnlock()
 	var validators models.ValidatorList
 	if err := proto.Unmarshal(validatorsBytes, &validators); err != nil {
@@ -297,9 +315,15 @@ func (v *State) Validators(isQuery bool) ([]*models.Validator, error) {
 	var err error
 	v.RLock()
 	if isQuery {
-		validatorBytes = v.Store.ImmutableTree(AppTree).Get(validatorKey)
+		validatorBytes, err = v.Store.ImmutableTree(AppTree).Get(validatorKey)
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		validatorBytes = v.Store.Tree(AppTree).Get(validatorKey)
+		validatorBytes, err = v.Store.Tree(AppTree).Get(validatorKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 	v.RUnlock()
 	var validators models.ValidatorList
@@ -433,9 +457,15 @@ func (v *State) Envelope(processID, nullifier []byte, isQuery bool) (_ []byte, e
 	v.RLock()
 	defer v.RUnlock() // needs to be deferred due to the recover above
 	if isQuery {
-		voteHash = v.Store.ImmutableTree(VoteTree).Get(vid)
+		voteHash, err = v.Store.ImmutableTree(VoteTree).Get(vid)
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		voteHash = v.Store.Tree(VoteTree).Get(vid)
+		voteHash, err = v.Store.Tree(VoteTree).Get(vid)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if voteHash == nil {
 		return nil, ErrVoteDoesNotExist
@@ -510,9 +540,19 @@ func (v *State) Header(isQuery bool) *models.TendermintHeader {
 	var headerBytes []byte
 	v.RLock()
 	if isQuery {
-		headerBytes = v.Store.ImmutableTree(AppTree).Get(headerKey)
+		var err error
+		headerBytes, err = v.Store.ImmutableTree(AppTree).Get(headerKey)
+		if err != nil {
+			log.Errorf("cannot get vochain height: %s", err)
+			return nil
+		}
 	} else {
-		headerBytes = v.Store.Tree(AppTree).Get(headerKey)
+		var err error
+		headerBytes, err = v.Store.Tree(AppTree).Get(headerKey)
+		if err != nil {
+			log.Errorf("cannot get vochain height: %s", err)
+			return nil
+		}
 	}
 	v.RUnlock()
 	var header models.TendermintHeader
@@ -529,9 +569,17 @@ func (v *State) AppHash(isQuery bool) []byte {
 	var headerBytes []byte
 	v.RLock()
 	if isQuery {
-		headerBytes = v.Store.ImmutableTree(AppTree).Get(headerKey)
+		var err error
+		headerBytes, err = v.Store.ImmutableTree(AppTree).Get(headerKey)
+		if err != nil {
+			return []byte{}
+		}
 	} else {
-		headerBytes = v.Store.Tree(AppTree).Get(headerKey)
+		var err error
+		headerBytes, err = v.Store.Tree(AppTree).Get(headerKey)
+		if err != nil {
+			return []byte{}
+		}
 	}
 	v.RUnlock()
 	var header models.TendermintHeader
